@@ -20,8 +20,8 @@ export function deleteCollector(id) {
   return api.delete(`/collectors/${id}`);
 }
 
-export function assignCustomers(collectorId, customerIds) {
-  return api.post(`/collectors/${collectorId}/assign`, { customerIds });
+export function assignCustomers(collectorId, customerIds, replace = false) {
+  return api.post(`/collectors/${collectorId}/assign`, { customerIds, replace });
 }
 
 export function unassignCustomer(collectorId, customerId) {

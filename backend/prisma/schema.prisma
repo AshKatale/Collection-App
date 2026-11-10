@@ -64,8 +64,10 @@ model Customer {
   entries            Entry[]
   assignments        CollectorCustomer[]
 
-  // Account numbers only need to be unique inside one owner's book
-  @@unique([ownerId, accountNo])
+  // Same account number may be shared by different people (joint/family accounts),
+  // but the same number + same name inside one owner's book is a duplicate.
+  @@unique([ownerId, accountNo, name])
+  @@index([ownerId, accountNo])
 }
 
 model CollectorCustomer {

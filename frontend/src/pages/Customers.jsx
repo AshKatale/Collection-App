@@ -129,6 +129,7 @@ export default function Customers() {
                   <th className="px-4 py-3">Account No</th>
                   <th className="px-4 py-3">Customer Name</th>
                   <th className="px-4 py-3 text-right">Usual daily</th>
+                  <th className="px-4 py-3">Collector</th>
                   <th className="px-4 py-3">Phone</th>
                   <th className="px-4 py-3">Address</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -145,6 +146,11 @@ export default function Customers() {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                       {c.defaultDailyAmount ? formatMoney(c.defaultDailyAmount) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {collectors.find((col) => col.id === c.assignments?.[0]?.collectorId)?.name || (
+                        <span className="text-gray-400">Unassigned</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {c.phone || '-'}

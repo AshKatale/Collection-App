@@ -107,9 +107,7 @@ export default function Collectors() {
     if (!selectedCollector) return;
     setSavingAssignment(true);
     try {
-      await assignCustomers(selectedCollector.id, {
-        customerIds: Array.from(assignedCustomerIds),
-      });
+      await assignCustomers(selectedCollector.id, Array.from(assignedCustomerIds), true);
       setAssignModalOpen(false);
       loadData();
     } catch (err) {
@@ -171,7 +169,7 @@ export default function Collectors() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="inline-block px-2.5 py-1 text-xs font-bold rounded-full bg-primary-100 text-primary-800">
-                        {c._count?.assignments || c.assignments?.length || 0} customers
+                        {c._count?.assignments ?? 0} customers
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right space-x-2">
@@ -179,7 +177,7 @@ export default function Collectors() {
                         onClick={() => handleOpenAssign(c)}
                         className="text-primary-600 hover:text-primary-800 font-semibold text-xs px-2.5 py-1 rounded bg-primary-50 border border-primary-200"
                       >
-                        <Users className="h-4 w-4" /> Assign Customers
+                        <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> Assign Customers</span>
                       </button>
                       <button
                         onClick={() => handleOpenEdit(c)}

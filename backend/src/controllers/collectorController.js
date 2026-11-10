@@ -20,7 +20,10 @@ const listCollectors = async (req, res) => {
 
     const collectors = await prisma.user.findMany({
       where,
-      select: { id: true, name: true, email: true, phone: true, role: true, ownerId: true, isActive: true, createdAt: true },
+      select: {
+        id: true, name: true, email: true, phone: true, role: true, ownerId: true, isActive: true, createdAt: true,
+        _count: { select: { assignments: true } },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -193,9 +196,9 @@ const assignCustomers = async (req, res) => {
   try {
     const user = req.user;
     const collectorId = req.params.id;
-    const { customerIds } = req.body;
+    const { customerIds, replace } = req.body;
 
-    if (!customerIds || !Array.isArray(customerIds) || customerIds.length === 0) {
+    if (!Array.isArray(customerIds) || (customerIds.length === 0 && !replace)) {
       return res.status(400).json({ success: false, message: 'customerIds array is required' });
     }
 
@@ -207,6 +210,16 @@ const assignCustomers = async (req, res) => {
 
     if (user.role === 'OWNER' && collector.ownerId !== user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // replace=true: the list is the collector's complete set (unchecked customers get removed)
+    if (replace) {
+      await prisma.collectorCustomer.deleteMany({
+        where: { collectorId, customerId: { notIn: customerIds } },
+      });
+      if (customerIds.length === 0) {
+        return res.json({ success: true, data: { message: 'All customers unassigned' } });
+      }
     }
 
     // Verify all customers belong to the right owner

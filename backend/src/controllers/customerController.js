@@ -114,12 +114,12 @@ const createCustomer = async (req, res) => {
       }
     }
 
-    // Check duplicate accountNo
-    const existing = await prisma.customer.findUnique({
-      where: { ownerId_accountNo: { ownerId: assignedOwnerId, accountNo } },
+    // Same account number is allowed, but not with the same name
+    const existing = await prisma.customer.findFirst({
+      where: { ownerId: assignedOwnerId, accountNo, name: { equals: name, mode: 'insensitive' } },
     });
     if (existing) {
-      return res.status(409).json({ success: false, message: 'Account number already exists' });
+      return res.status(409).json({ success: false, message: 'A customer with this account number and name already exists' });
     }
 
     const customer = await prisma.customer.create({
@@ -188,16 +188,52 @@ const updateCustomer = async (req, res) => {
       data.defaultDailyAmount = a;
     }
 
-    const updated = await prisma.customer.update({
-      where: { id: req.params.id },
-      data,
+    // Duplicate check (same account no + same name for this owner)
+    if (data.accountNo !== undefined || data.name !== undefined) {
+      const dup = await prisma.customer.findFirst({
+        where: {
+          id: { not: customer.id },
+          ownerId: customer.ownerId,
+          accountNo: data.accountNo ?? customer.accountNo,
+          name: { equals: data.name ?? customer.name, mode: 'insensitive' },
+        },
+      });
+      if (dup) {
+        return res.status(409).json({ success: false, message: 'A customer with this account number and name already exists' });
+      }
+    }
+
+    // Re-assign collector (owner/admin). '' / null = unassign everyone.
+    let newCollectorId;
+    if (req.body.collectorId !== undefined) {
+      newCollectorId = req.body.collectorId || null;
+      if (newCollectorId) {
+        const col = await prisma.user.findUnique({
+          where: { id: newCollectorId },
+          select: { role: true, ownerId: true, isActive: true },
+        });
+        if (!col || col.role !== 'COLLECTOR' || !col.isActive || col.ownerId !== customer.ownerId) {
+          return res.status(400).json({ success: false, message: 'Collector does not belong to this customer\'s owner' });
+        }
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.customer.update({ where: { id: req.params.id }, data });
+      if (newCollectorId !== undefined) {
+        await tx.collectorCustomer.deleteMany({ where: { customerId: row.id } });
+        if (newCollectorId) {
+          await tx.collectorCustomer.create({ data: { customerId: row.id, collectorId: newCollectorId } });
+        }
+      }
+      return tx.customer.findUnique({ where: { id: row.id }, include: { assignments: true } });
     });
 
     return res.json({ success: true, data: updated });
   } catch (err) {
     console.error('Update customer error:', err);
     if (err.code === 'P2002') {
-      return res.status(409).json({ success: false, message: 'Account number already exists' });
+      return res.status(409).json({ success: false, message: 'A customer with this account number and name already exists' });
     }
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }

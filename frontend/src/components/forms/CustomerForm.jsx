@@ -81,10 +81,10 @@ export default function CustomerForm({
         />
       </div>
 
-      {collectors.length > 0 && !initialData && (
+      {collectors.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Assign directly to Collector (Optional)
+            Assign to Collector
           </label>
           <select
             name="collectorId"
@@ -92,8 +92,8 @@ export default function CustomerForm({
             onChange={handleChange}
             className="input-field"
           >
-            <option value="">-- Do not assign yet --</option>
-            {collectors.map((c) => (
+            <option value="">-- Not assigned --</option>
+            {collectors.filter((c) => c.isActive).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.email})
               </option>
