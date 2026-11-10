@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
+  // Same-origin '/api' by default (Nginx or the Vite proxy forwards it to the backend).
+  // Set VITE_API_URL=https://api.your-domain.com/api when the API lives on another origin.
+  baseURL: (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, ''),
   headers: {
     'Content-Type': 'application/json',
   },
