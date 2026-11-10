@@ -145,7 +145,16 @@ export default function Customers() {
                       {c.name}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                      {c.defaultDailyAmount ? formatMoney(c.defaultDailyAmount) : '-'}
+                      {(() => {
+                        const s = Number(c.defaultSavings ?? c.defaultDailyAmount) || 0;
+                        const l = Number(c.defaultLoan) || 0;
+                        const i = Number(c.defaultInterest) || 0;
+                        return s + l + i > 0 ? (
+                          <span title={`Savings ${s} · Loan ${l} · Interest ${i}`}>{formatMoney(s + l + i)}</span>
+                        ) : (
+                          '-'
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-gray-700">
                       {collectors.find((col) => col.id === c.assignments?.[0]?.collectorId)?.name || (

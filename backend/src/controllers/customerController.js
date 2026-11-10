@@ -1,6 +1,8 @@
 const prisma = require('../db');
 const { parsePositiveAmount } = require('../utils/helpers');
 
+const DEFAULT_FIELDS = ['defaultSavings', 'defaultLoan', 'defaultInterest'];
+
 /** '' / null -> null, valid positive number -> number, otherwise undefined (invalid) */
 const parseDefaultAmount = (v) => {
   if (v === undefined) return undefined;
@@ -76,9 +78,13 @@ const createCustomer = async (req, res) => {
     if (!accountNo || !name) {
       return res.status(400).json({ success: false, message: 'accountNo and name are required' });
     }
-    const defaultDailyAmount = parseDefaultAmount(req.body.defaultDailyAmount);
-    if (req.body.defaultDailyAmount !== undefined && defaultDailyAmount === undefined) {
-      return res.status(400).json({ success: false, message: 'defaultDailyAmount must be a positive number' });
+    const defaults = {};
+    for (const f of DEFAULT_FIELDS) {
+      const v = parseDefaultAmount(req.body[f]);
+      if (req.body[f] !== undefined && v === undefined) {
+        return res.status(400).json({ success: false, message: `${f} must be a positive number` });
+      }
+      defaults[f] = v ?? null;
     }
 
     let assignedOwnerId;
@@ -97,27 +103,32 @@ const createCustomer = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    const owner = await prisma.user.findUnique({
-      where: { id: assignedOwnerId },
-      select: { role: true, isActive: true },
-    });
+    // The three checks are independent: run them together (one round trip instead of three)
+    const [owner, collector, existing] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: assignedOwnerId },
+        select: { role: true, isActive: true },
+      }),
+      targetCollectorId
+        ? prisma.user.findUnique({
+            where: { id: targetCollectorId },
+            select: { role: true, ownerId: true, isActive: true },
+          })
+        : null,
+      // Same account number is allowed, but not with the same name
+      prisma.customer.findFirst({
+        where: { ownerId: assignedOwnerId, accountNo, name: { equals: name, mode: 'insensitive' } },
+        select: { id: true },
+      }),
+    ]);
     if (!owner || owner.role !== 'OWNER' || !owner.isActive) {
       return res.status(400).json({ success: false, message: 'A valid active owner is required' });
     }
     if (targetCollectorId) {
-      const collector = await prisma.user.findUnique({
-        where: { id: targetCollectorId },
-        select: { role: true, ownerId: true, isActive: true },
-      });
       if (!collector || collector.role !== 'COLLECTOR' || !collector.isActive || collector.ownerId !== assignedOwnerId) {
         return res.status(400).json({ success: false, message: 'Collector does not belong to the selected owner' });
       }
     }
-
-    // Same account number is allowed, but not with the same name
-    const existing = await prisma.customer.findFirst({
-      where: { ownerId: assignedOwnerId, accountNo, name: { equals: name, mode: 'insensitive' } },
-    });
     if (existing) {
       return res.status(409).json({ success: false, message: 'A customer with this account number and name already exists' });
     }
@@ -128,7 +139,7 @@ const createCustomer = async (req, res) => {
         name,
         phone: phone || null,
         address: address || null,
-        defaultDailyAmount: defaultDailyAmount ?? null,
+        ...defaults,
         ownerId: assignedOwnerId,
         ...(targetCollectorId && {
           assignments: {
@@ -182,10 +193,11 @@ const updateCustomer = async (req, res) => {
       data.accountNo = String(accountNo).trim();
     }
     if (isActive !== undefined) data.isActive = Boolean(isActive);
-    if (req.body.defaultDailyAmount !== undefined) {
-      const a = parseDefaultAmount(req.body.defaultDailyAmount);
-      if (a === undefined) return res.status(400).json({ success: false, message: 'defaultDailyAmount must be a positive number' });
-      data.defaultDailyAmount = a;
+    for (const f of DEFAULT_FIELDS) {
+      if (req.body[f] === undefined) continue;
+      const a = parseDefaultAmount(req.body[f]);
+      if (a === undefined) return res.status(400).json({ success: false, message: `${f} must be a positive number` });
+      data[f] = a;
     }
 
     // Duplicate check (same account no + same name for this owner)

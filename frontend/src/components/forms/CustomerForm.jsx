@@ -13,7 +13,9 @@ export default function CustomerForm({
     name: '',
     phone: '',
     address: '',
-    defaultDailyAmount: '',
+    defaultSavings: '',
+    defaultLoan: '',
+    defaultInterest: '',
     collectorId: '',
   });
 
@@ -24,7 +26,10 @@ export default function CustomerForm({
         name: initialData.name || '',
         phone: initialData.phone || '',
         address: initialData.address || '',
-        defaultDailyAmount: initialData.defaultDailyAmount ?? '',
+        // old customers only have the single legacy amount: show it as Savings
+        defaultSavings: initialData.defaultSavings ?? initialData.defaultDailyAmount ?? '',
+        defaultLoan: initialData.defaultLoan ?? '',
+        defaultInterest: initialData.defaultInterest ?? '',
         collectorId: initialData.assignments?.[0]?.collectorId || '',
       });
     }
@@ -41,12 +46,16 @@ export default function CustomerForm({
       toast.error('Account number and name are required');
       return;
     }
-    const amount = formData.defaultDailyAmount === '' ? null : Number(formData.defaultDailyAmount);
-    if (amount !== null && !(amount > 0)) {
-      toast.error('Usual daily amount must be greater than 0');
-      return;
+    const out = { ...formData };
+    for (const f of ['defaultSavings', 'defaultLoan', 'defaultInterest']) {
+      const amount = formData[f] === '' ? null : Number(formData[f]);
+      if (amount !== null && !(amount > 0)) {
+        toast.error('Usual amounts must be greater than 0 (or left empty)');
+        return;
+      }
+      out[f] = amount;
     }
-    onSubmit({ ...formData, defaultDailyAmount: amount });
+    onSubmit(out);
   };
 
   return (
@@ -103,20 +112,33 @@ export default function CustomerForm({
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Usual daily amount (₹)
-        </label>
-        <input
-          type="number"
-          inputMode="decimal"
-          name="defaultDailyAmount"
-          value={formData.defaultDailyAmount}
-          onChange={handleChange}
-          min="0"
-          step="any"
-          placeholder="e.g. 2000 (one-tap in the Collect screen)"
-          className="input-field"
-        />
+        <p className="block text-sm font-medium text-gray-700 mb-1">
+          Usual daily amounts (₹)
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            ['defaultSavings', 'Savings'],
+            ['defaultLoan', 'Loan'],
+            ['defaultInterest', 'Interest'],
+          ].map(([name, label]) => (
+            <div key={name}>
+              <label className="block text-xs text-gray-500 mb-1" htmlFor={`cf-${name}`}>{label}</label>
+              <input
+                id={`cf-${name}`}
+                type="number"
+                inputMode="decimal"
+                name={name}
+                value={formData[name]}
+                onChange={handleChange}
+                min="0"
+                step="any"
+                placeholder="0"
+                className="input-field"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">Pre-filled when collecting (doubled on Mondays). Leave empty if none.</p>
       </div>
 
       <div>

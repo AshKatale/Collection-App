@@ -89,6 +89,13 @@ const server = app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
 });
 
+// Keep the (serverless) database awake and the connection pool warm so the first
+// request after a quiet period doesn't hang on a dead connection.
+const keepAlive = setInterval(() => {
+  prisma.$queryRaw`SELECT 1`.catch((e) => console.warn('DB keep-alive failed:', e.message));
+}, 4 * 60 * 1000);
+keepAlive.unref();
+
 const shutdown = async () => {
   server.close();
   await prisma.$disconnect();

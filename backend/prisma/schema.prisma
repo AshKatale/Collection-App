@@ -56,7 +56,12 @@ model Customer {
   phone              String?
   address            String?
   // Usual amount collected per day (used for one-tap collection in the Collect screen)
+  // (legacy single amount; kept so old data is not lost, used as Savings fallback)
   defaultDailyAmount Decimal?            @db.Decimal(12, 2)
+  // Usual daily amount per type: pre-fills the Collect screen (doubled on Mondays)
+  defaultSavings     Decimal?            @db.Decimal(12, 2)
+  defaultLoan        Decimal?            @db.Decimal(12, 2)
+  defaultInterest    Decimal?            @db.Decimal(12, 2)
   ownerId            String
   owner              User                @relation("CustomerOwner", fields: [ownerId], references: [id])
   isActive           Boolean             @default(true)

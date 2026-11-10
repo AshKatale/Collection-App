@@ -30,7 +30,17 @@ import { toast, confirmDialog } from '../components/common/Toast.jsx';
 const TYPES = ['SAVINGS', 'LOAN', 'INTEREST'];
 const CUSTOMER_CACHE = 'collect_customers_v1';
 
-const byAccount = (a, b) => String(a.accountNo).localeCompare(String(b.accountNo), undefined, { numeric: true, sensitivity: 'base' });
+/** Customer's usual amount per type (old customers: the single legacy amount counts as Savings). */
+const usualOf = (c) => ({
+  SAVINGS: Number(c.defaultSavings ?? c.defaultDailyAmount) || 0,
+  LOAN: Number(c.defaultLoan) || 0,
+  INTEREST: Number(c.defaultInterest) || 0,
+});
+
+/** Monday collections are double the usual amount. date = 'YYYY-MM-DD' */
+const isMonday = (date) => new Date(`${date}T00:00:00`).getDay() === 1;
+
+const byAccount =(a, b) => String(a.accountNo).localeCompare(String(b.accountNo), undefined, { numeric: true, sensitivity: 'base' });
 
 /** Last known customer list, so the route sheet still opens with no connection. */
 const readCustomerFallback = (userId) => {
@@ -375,7 +385,11 @@ export default function Collect() {
                       <p className="font-semibold text-gray-900 truncate">{c.name}</p>
                       <p className="text-xs text-gray-500">
                         <span className="font-mono">#{c.accountNo}</span>
-                        {c.defaultDailyAmount ? <> · usual {formatMoney(c.defaultDailyAmount)}</> : null}
+                        {(() => {
+                          const u = usualOf(c);
+                          const sum = u.SAVINGS + u.LOAN + u.INTEREST;
+                          return sum > 0 ? <> · usual {formatMoney(sum * (isMonday(date) ? 2 : 1))}</> : null;
+                        })()}
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -426,12 +440,23 @@ export default function Collect() {
 
 /** Bottom sheet for one customer: what was collected + add more. */
 function CustomerSheet({ customer, date, canWrite, rows, onClose, onSave, onChangeAmount, onRemove }) {
-  const [amounts, setAmounts] = useState({ SAVINGS: '', LOAN: '', INTEREST: '' });
+  // Pre-fill with the customer's usual amounts (x2 on Monday), editable.
+  // Not when something is already recorded for the day, so a second save can't double-count.
+  const [amounts, setAmounts] = useState(() => {
+    const empty = { SAVINGS: '', LOAN: '', INTEREST: '' };
+    if (rows.length > 0) return empty;
+    const factor = isMonday(date) ? 2 : 1;
+    const usual = usualOf(customer);
+    TYPES.forEach((t) => {
+      if (usual[t] > 0) empty[t] = String(Math.round(usual[t] * factor * 100) / 100);
+    });
+    return empty;
+  });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
 
-  const usual = customer.defaultDailyAmount;
+  const factor = isMonday(date) ? 2 : 1;
   const hasAny = TYPES.some((t) => Number(amounts[t]) > 0);
 
   const submit = async (e) => {
@@ -530,13 +555,14 @@ function CustomerSheet({ customer, date, canWrite, rows, onClose, onSave, onChan
                 placeholder="0"
                 className="input-field text-lg font-bold"
               />
-              {t === 'SAVINGS' && usual ? (
+              {usualOf(customer)[t] > 0 ? (
                 <button
                   type="button"
-                  onClick={() => setAmounts((a) => ({ ...a, SAVINGS: String(usual) }))}
+                  onClick={() => setAmounts((a) => ({ ...a, [t]: String(usualOf(customer)[t] * factor) }))}
                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary-600"
                 >
-                  <Sparkles className="h-3.5 w-3.5" /> Use usual amount {formatMoney(usual)}
+                  <Sparkles className="h-3.5 w-3.5" /> Use usual {formatMoney(usualOf(customer)[t] * factor)}
+                  {factor === 2 ? ' (Monday ×2)' : ''}
                 </button>
               ) : null}
             </div>
