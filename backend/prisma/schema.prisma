@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  COLLECTOR
+}
+
+enum AccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum EntryType {
+  SAVINGS
+  LOAN
+  INTEREST
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  password   String
+  phone      String?
+  role       Role     @default(COLLECTOR)
+  ownerId    String?
+  owner      User?    @relation("OwnerCollectors", fields: [ownerId], references: [id])
+  collectors User[]   @relation("OwnerCollectors")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customersOwned Customer[]          @relation("CustomerOwner")
+  assignments    CollectorCustomer[]
+  entriesCollected Entry[]           @relation("EntryCollector")
+  entriesOwned   Entry[]             @relation("EntryOwner")
+  entriesCreated Entry[]             @relation("EntryCreator")
+  accessAsCollector AccessRequest[]  @relation("AccessCollector")
+  accessAsOwner  AccessRequest[]     @relation("AccessOwner")
+}
+
+model Customer {
+  id                 String              @id @default(cuid())
+  accountNo          String
+  name               String
+  phone              String?
+  address            String?
+  // Usual amount collected per day (used for one-tap collection in the Collect screen)
+  defaultDailyAmount Decimal?            @db.Decimal(12, 2)
+  ownerId            String
+  owner              User                @relation("CustomerOwner", fields: [ownerId], references: [id])
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  entries            Entry[]
+  assignments        CollectorCustomer[]
+
+  // Account numbers only need to be unique inside one owner's book
+  @@unique([ownerId, accountNo])
+}
+
+model CollectorCustomer {
+  collectorId String
+  collector   User     @relation(fields: [collectorId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime @default(now())
+
+  @@id([collectorId, customerId])
+  @@index([customerId])
+}
+
+model Entry {
+  id          String    @id @default(cuid())
+  date        DateTime  @db.Date
+  collectorId String
+  collector   User      @relation("EntryCollector", fields: [collectorId], references: [id])
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  type        EntryType
+  // Money is stored exactly (no floating point rounding)
+  amount      Decimal   @db.Decimal(12, 2)
+  notes       String?
+  ownerId     String
+  owner       User      @relation("EntryOwner", fields: [ownerId], references: [id])
+  createdBy   String
+  creator     User      @relation("EntryCreator", fields: [createdBy], references: [id])
+  // Client generated id: makes retries / offline replays idempotent (no duplicates)
+  clientId    String?   @unique
+  // Soft delete: entries are never physically removed so history stays auditable
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([date, collectorId])
+  @@index([customerId, date])
+  @@index([ownerId, date])
+  @@index([deletedAt])
+}
+
+// Who changed which entry, and what it looked like before / after
+model AuditLog {
+  id        String   @id @default(cuid())
+  entryId   String
+  actorId   String
+  actorName String
+  action    String // CREATE | UPDATE | DELETE
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entryId])
+  @@index([createdAt])
+}
+
+// A collector may only add/change TODAY's entries. For any other date (past or
+// future) the owner must approve a request (or grant access directly).
+model AccessRequest {
+  id            String       @id @default(cuid())
+  collectorId   String
+  collector     User         @relation("AccessCollector", fields: [collectorId], references: [id], onDelete: Cascade)
+  ownerId       String
+  owner         User         @relation("AccessOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  fromDate      DateTime     @db.Date
+  toDate        DateTime     @db.Date
+  reason        String?
+  status        AccessStatus @default(PENDING)
+  decidedBy     String?
+  decidedByName String?
+  decidedAt     DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([collectorId, status])
+  @@index([ownerId, status])
+}

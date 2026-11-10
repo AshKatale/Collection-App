@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.vite/
+
+# Environment files (contain database URL and secrets). Keep only the examples.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Real business data (customer ledgers / exported reports): never commit
+*.xlsx
+*.xls
+*.csv
+!backend/assets/**
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Test output / coverage
+coverage/
+.nyc_output/
+
+# Prisma local artifacts
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Mobile wrapper (Capacitor) build artifacts, if added later
+android/app/build/
+android/.gradle/
+ios/App/Pods/

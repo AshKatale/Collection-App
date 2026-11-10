@@ -1,0 +1,258 @@
+const prisma = require('../db');
+const { parsePositiveAmount } = require('../utils/helpers');
+
+/** '' / null -> null, valid positive number -> number, otherwise undefined (invalid) */
+const parseDefaultAmount = (v) => {
+  if (v === undefined) return undefined;
+  if (v === null || v === '') return null;
+  const a = parsePositiveAmount(v);
+  return a === null ? undefined : a;
+};
+
+
+/**
+ * GET /api/customers
+ * Collector: assigned customers only.
+ * Owner: their own customers.
+ * Admin: all.
+ */
+const listCustomers = async (req, res) => {
+  try {
+    const user = req.user;
+    let customers;
+
+    if (user.role === 'ADMIN') {
+      customers = await prisma.customer.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+        include: {
+          assignments: { select: { collectorId: true } },
+        },
+      });
+    } else if (user.role === 'OWNER') {
+      customers = await prisma.customer.findMany({
+        where: { ownerId: user.id, isActive: true },
+        orderBy: { name: 'asc' },
+        include: {
+          assignments: { select: { collectorId: true } },
+        },
+      });
+    } else {
+      // COLLECTOR – only assigned active customers
+      const assignments = await prisma.collectorCustomer.findMany({
+        where: {
+          collectorId: user.id,
+          customer: { isActive: true },
+        },
+        include: {
+          customer: {
+            include: { assignments: { select: { collectorId: true } } },
+          },
+        },
+      });
+      customers = assignments.map((a) => a.customer);
+    }
+
+    return res.json({ success: true, data: customers });
+  } catch (err) {
+    console.error('List customers error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * POST /api/customers
+ * Collector: creates customer under their owner and auto-assigns to themselves.
+ * Owner: creates under themselves, optionally assigns to a collector.
+ * Admin: can specify ownerId and optional collectorId.
+ */
+const createCustomer = async (req, res) => {
+  try {
+    const user = req.user;
+    const { phone, address, ownerId, collectorId } = req.body;
+    const accountNo = String(req.body.accountNo ?? '').trim();
+    const name = String(req.body.name ?? '').trim();
+
+    if (!accountNo || !name) {
+      return res.status(400).json({ success: false, message: 'accountNo and name are required' });
+    }
+    const defaultDailyAmount = parseDefaultAmount(req.body.defaultDailyAmount);
+    if (req.body.defaultDailyAmount !== undefined && defaultDailyAmount === undefined) {
+      return res.status(400).json({ success: false, message: 'defaultDailyAmount must be a positive number' });
+    }
+
+    let assignedOwnerId;
+    let targetCollectorId = null;
+
+    if (user.role === 'ADMIN') {
+      assignedOwnerId = ownerId || user.id;
+      if (collectorId) targetCollectorId = collectorId;
+    } else if (user.role === 'OWNER') {
+      assignedOwnerId = user.id;
+      if (collectorId) targetCollectorId = collectorId;
+    } else if (user.role === 'COLLECTOR') {
+      assignedOwnerId = user.ownerId || user.id;
+      targetCollectorId = user.id; // Auto-assign to self
+    } else {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const owner = await prisma.user.findUnique({
+      where: { id: assignedOwnerId },
+      select: { role: true, isActive: true },
+    });
+    if (!owner || owner.role !== 'OWNER' || !owner.isActive) {
+      return res.status(400).json({ success: false, message: 'A valid active owner is required' });
+    }
+    if (targetCollectorId) {
+      const collector = await prisma.user.findUnique({
+        where: { id: targetCollectorId },
+        select: { role: true, ownerId: true, isActive: true },
+      });
+      if (!collector || collector.role !== 'COLLECTOR' || !collector.isActive || collector.ownerId !== assignedOwnerId) {
+        return res.status(400).json({ success: false, message: 'Collector does not belong to the selected owner' });
+      }
+    }
+
+    // Check duplicate accountNo
+    const existing = await prisma.customer.findUnique({
+      where: { ownerId_accountNo: { ownerId: assignedOwnerId, accountNo } },
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'Account number already exists' });
+    }
+
+    const customer = await prisma.customer.create({
+      data: {
+        accountNo,
+        name,
+        phone: phone || null,
+        address: address || null,
+        defaultDailyAmount: defaultDailyAmount ?? null,
+        ownerId: assignedOwnerId,
+        ...(targetCollectorId && {
+          assignments: {
+            create: {
+              collectorId: targetCollectorId,
+            },
+          },
+        }),
+      },
+      include: {
+        assignments: true,
+      },
+    });
+
+    return res.status(201).json({ success: true, data: customer });
+  } catch (err) {
+    console.error('Create customer error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * PUT /api/customers/:id
+ * Owner (own) / Admin.
+ */
+const updateCustomer = async (req, res) => {
+  try {
+    const user = req.user;
+    const customer = await prisma.customer.findUnique({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    if (user.role === 'OWNER' && customer.ownerId !== user.id) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (user.role === 'COLLECTOR') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const { name, phone, address, accountNo, isActive } = req.body;
+    const data = {};
+    if (name !== undefined) {
+      if (!String(name).trim()) return res.status(400).json({ success: false, message: 'name cannot be empty' });
+      data.name = String(name).trim();
+    }
+    if (phone !== undefined) data.phone = phone || null;
+    if (address !== undefined) data.address = address || null;
+    if (accountNo !== undefined) {
+      if (!String(accountNo).trim()) return res.status(400).json({ success: false, message: 'accountNo cannot be empty' });
+      data.accountNo = String(accountNo).trim();
+    }
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
+    if (req.body.defaultDailyAmount !== undefined) {
+      const a = parseDefaultAmount(req.body.defaultDailyAmount);
+      if (a === undefined) return res.status(400).json({ success: false, message: 'defaultDailyAmount must be a positive number' });
+      data.defaultDailyAmount = a;
+    }
+
+    const updated = await prisma.customer.update({
+      where: { id: req.params.id },
+      data,
+    });
+
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('Update customer error:', err);
+    if (err.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'Account number already exists' });
+    }
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+/**
+ * DELETE /api/customers/:id
+ * If no entries exist: completely delete assignments & customer.
+ * If historical entries exist: soft delete (isActive = false) & delete assignments.
+ */
+const deleteCustomer = async (req, res) => {
+  try {
+    const user = req.user;
+    const customer = await prisma.customer.findUnique({
+      where: { id: req.params.id },
+      include: {
+        _count: {
+          select: { entries: true },
+        },
+      },
+    });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    if (user.role === 'OWNER' && customer.ownerId !== user.id) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (user.role === 'COLLECTOR') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Always remove any collector assignments for this customer
+    await prisma.collectorCustomer.deleteMany({
+      where: { customerId: req.params.id },
+    });
+
+    if (!customer._count || customer._count.entries === 0) {
+      // No entries: hard delete cleanly
+      await prisma.customer.delete({
+        where: { id: req.params.id },
+      });
+      return res.json({ success: true, message: 'Customer deleted permanently' });
+    } else {
+      // Existing entries: soft delete so historical accounting is preserved
+      await prisma.customer.update({
+        where: { id: req.params.id },
+        data: { isActive: false },
+      });
+      return res.json({ success: true, message: 'Customer deactivated (archived)' });
+    }
+  } catch (err) {
+    console.error('Delete customer error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+module.exports = { listCustomers, createCustomer, updateCustomer, deleteCustomer };

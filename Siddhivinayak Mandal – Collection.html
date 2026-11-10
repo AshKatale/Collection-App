@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Siddhivinayak Mandal – Collection</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b2430;--mu:#68758a;--pr:#1f6f5c;--prt:#fff;--bd:#dde2ea;--ac:#e8f3ef;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171d;--card:#1b222b;--tx:#e8edf3;--mu:#93a0b3;--pr:#3fb594;--prt:#06241b;--bd:#2c3644;--ac:#1d3a33}}
+:root[data-theme="dark"]{--bg:#12171d;--card:#1b222b;--tx:#e8edf3;--mu:#93a0b3;--pr:#3fb594;--prt:#06241b;--bd:#2c3644;--ac:#1d3a33}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 Arial,Helvetica,sans-serif}
+main{max-width:720px;margin:0 auto;padding:12px 12px 80px}
+h1{font-size:17px;margin:4px 0 2px}h2{font-size:15px;margin:16px 0 8px}
+.sub{color:var(--mu);font-size:12px;margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin:10px 0}
+.tabs button,.seg button{flex:1;padding:10px 4px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;font:inherit;font-weight:600}
+.tabs button.on,.seg button.on{background:var(--pr);color:var(--prt);border-color:var(--pr)}
+.seg{display:flex;gap:6px;margin:6px 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px}
+label{display:block;font-size:12px;color:var(--mu);margin:8px 0 3px}
+input,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.go{width:100%;margin-top:12px;padding:12px;border:0;border-radius:8px;background:var(--pr);color:var(--prt);font:inherit;font-weight:700}
+.sm{padding:6px 10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:6px;font:inherit;font-size:12px}
+.sc{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 6px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--mu);font-weight:600}
+tr.t td{font-weight:700;background:var(--ac)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd);font-size:13px}
+.mu{color:var(--mu);font-size:12px}.msg{color:var(--pr);font-size:13px;margin-top:8px;min-height:18px}
+</style></head><body><main>
+<h1>Siddhivinayak Mandal – Collection</h1>
+<div class="sub" id="fy"></div>
+<div class="tabs"><button data-t="c" class="on">Collect</button><button data-t="r">Reports</button><button data-t="s">Setup</button></div>
+<div id="v"></div>
+</main>
+<script>
+var LS="smc_v1",TYPES=[["S","Savings"],["L","Loan repayment"],["I","Interest"]];
+var D={customers:[],collectors:[],entries:[]},db=null,tab="c",rep="d",msg="";
+var today=new Date().toISOString().slice(0,10);
+var st={col:"",date:today,cust:"",type:"S",rd:today,rm:today.slice(0,7),mt:"",cc:"",cf:fyStart(today)+"-04-01",ct:today};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function money(n){return "₹"+Number(n||0).toLocaleString("en-IN")}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function fyStart(iso){var y=+iso.slice(0,4),m=+iso.slice(5,7);return m>=4?y:y-1}
+function fyLabel(y){return y+"-"+String(y+1).slice(2)}
+function loadLocal(){try{var o=JSON.parse(localStorage.getItem(LS));if(o)D=o}catch(e){}}
+function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
+function put(col,o){if(db){db.collection(col).doc(o.id).set(o).catch(function(){msg="Could not save"})}else{D[col].push(o);saveLocal();draw()}}
+function del(col,id){if(db){db.collection(col).doc(id).delete()}else{D[col]=D[col].filter(function(x){return x.id!==id});saveLocal();draw()}}
+function sum(list){var a={S:0,L:0,I:0,T:0};list.forEach(function(e){a[e.type]+=e.amt;a.T+=e.amt});return a}
+function cname(id){var c=D.customers.find(function(x){return x.id===id});return c?c.acc+" · "+c.name:"(removed)"}
+function colName(id){var c=D.collectors.find(function(x){return x.id===id});return c?c.name:"(removed)"}
+function tbl(head,rows){return '<div class="sc"><table><tr>'+head.map(function(h){return"<th>"+h+"</th>"}).join("")+"</tr>"+rows.join("")+"</table></div>"}
+function tr(cells,cls){return "<tr"+(cls?' class="t"':"")+">"+cells.map(function(c,i){return"<td>"+(i?money(c):esc(c))+"</td>"}).join("")+"</tr>"}
+function opts(list,sel,f){return list.map(function(x){return'<option value="'+x.id+'"'+(x.id===sel?" selected":"")+">"+esc(f?f(x):x.name)+"</option>"}).join("")}
+function csv(name,rows){
+  var t=rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"'}).join(",")}).join("\n");
+  if(window.claude&&claude.use){claude.use("downloads").then(function(d){if(d)d.save({filename:name,data:t}).catch(function(){})})}
+}
+function typeLists(list){
+  return TYPES.map(function(t){
+    var m={};list.filter(function(e){return e.type===t[0]}).forEach(function(e){m[e.cust]=(m[e.cust]||0)+e.amt});
+    var ks=Object.keys(m).sort(function(a,b){return cname(a).localeCompare(cname(b))}),tot=0;
+    var rs=ks.map(function(k){tot+=m[k];return tr([cname(k),m[k]])});
+    rs.push(tr(["Total",tot],1));
+    return '<div class="card"><b>'+t[1]+' list</b>'+(ks.length?tbl(["Customer","Amount"],rs):'<div class="mu" style="margin-top:6px">No entries</div>')+'</div>';
+  }).join("");
+}
+function viewCollect(){
+  if(!st.col&&D.collectors[0])st.col=D.collectors[0].id;
+  if(!D.collectors.length||!D.customers.length)return '<div class="card">First add collectors and customers in the <b>Setup</b> tab.</div>';
+  var day=D.entries.filter(function(e){return e.date===st.date&&e.col===st.col});
+  var h='<div class="card"><label>Collector</label><select id="col">'+opts(D.collectors,st.col)+'</select>'
+  +'<label>Date</label><input type="date" id="date" value="'+st.date+'">'
+  +'<label>Customer</label><select id="cust"><option value="">Select customer</option>'+opts(D.customers,st.cust,function(c){return c.acc+" · "+c.name})+'</select>'
+  +TYPES.map(function(t){return'<label>'+t[1]+' amount (₹)</label><input type="number" id="amt'+t[0]+'" inputmode="decimal" min="0">'}).join("")
+  +'<button class="go" id="save">Save collection</button><div class="msg">'+msg+'</div></div>';
+  h+='<h2>'+esc(colName(st.col))+" – "+st.date+" · "+money(sum(day).T)+"</h2><div class=\"card\">";
+  h+=day.length?day.slice().reverse().map(function(e){return'<div class="row"><span>'+esc(cname(e.cust))+'<br><span class="mu">'+TYPES.find(function(t){return t[0]===e.type})[1]+'</span></span><span><b>'+money(e.amt)+'</b> <button class="sm" data-del="'+e.id+'">✕</button></span></div>'}).join(""):'<span class="mu">No entries yet</span>';
+  return h+"</div>";
+}
+function viewReports(){
+  var h='<div class="seg"><button data-r="d" class="'+(rep==="d"?"on":"")+'">Daily</button><button data-r="m" class="'+(rep==="m"?"on":"")+'">Monthly</button><button data-r="c" class="'+(rep==="c"?"on":"")+'">Customer</button></div>';
+  var head=["","Savings","Loan","Interest","Total"],rows,exp;
+  if(rep==="c"){
+    var P=D.entries.filter(function(e){return e.date>=st.cf&&e.date<=st.ct&&(!st.cc||e.cust===st.cc)});
+    h+='<div class="card"><label>Customer</label><select id="cc"><option value="">All customers</option>'+opts(D.customers,st.cc,function(c){return c.acc+" · "+c.name})+'</select><label>From</label><input type="date" id="cf" value="'+st.cf+'"><label>To</label><input type="date" id="ct" value="'+st.ct+'"><div class="mu" style="margin-top:6px">Default period: this financial year from 1 April</div></div>';
+    var cl=st.cc?D.customers.filter(function(c){return c.id===st.cc}):D.customers;
+    rows=cl.map(function(c){var a=sum(P.filter(function(e){return e.cust===c.id}));return tr([c.acc+" · "+c.name,a.S,a.L,a.I,a.T])});
+    var t3=sum(P);rows.push(tr(["Total",t3.S,t3.L,t3.I,t3.T],1));
+    h+='<div class="card"><b>Customer-wise</b>'+tbl(["Customer"].concat(head.slice(1)),rows)+'</div>';
+    h+=typeLists(P);
+    if(st.cc){var dd={};P.forEach(function(e){(dd[e.date]=dd[e.date]||[]).push(e)});
+      h+='<div class="card"><b>Date-wise</b>'+tbl(["Date"].concat(head.slice(1)),Object.keys(dd).sort().map(function(d){var a=sum(dd[d]);return tr([d.slice(8)+"-"+d.slice(5,7)+"-"+d.slice(0,4),a.S,a.L,a.I,a.T])}))+'</div>'}
+    exp=[["Account","Customer","Savings","Loan","Interest","Total"]].concat(cl.map(function(c){var a=sum(P.filter(function(e){return e.cust===c.id}));return[c.acc,c.name,a.S,a.L,a.I,a.T]}));
+    h+='<button class="go" id="exp" data-n="customer-'+st.cf+'-to-'+st.ct+'.csv">Download CSV</button>';
+  }else if(rep==="d"){
+    var L=D.entries.filter(function(e){return e.date===st.rd});
+    h+='<div class="card"><label>Date</label><input type="date" id="rd" value="'+st.rd+'"></div>';
+    rows=D.collectors.map(function(c){var a=sum(L.filter(function(e){return e.col===c.id}));return tr([c.name,a.S,a.L,a.I,a.T])});
+    var t=sum(L);rows.push(tr(["Total",t.S,t.L,t.I,t.T],1));
+    h+='<div class="card"><b>Collector-wise</b>'+tbl(head,rows)+'</div>';
+    h+=typeLists(L);
+    exp=[["Collector","Savings","Loan","Interest","Total"]].concat(D.collectors.map(function(c){var a=sum(L.filter(function(e){return e.col===c.id}));return[c.name,a.S,a.L,a.I,a.T]}));
+    h+='<button class="go" id="exp" data-n="daily-'+st.rd+'.csv">Download CSV</button>';
+  }else{
+    var M=D.entries.filter(function(e){return e.date.slice(0,7)===st.rm}),fy=fyStart(st.rm+"-01");
+    h+='<div class="card"><label>Month</label><input type="month" id="rm" value="'+st.rm+'"></div>';
+    rows=D.collectors.map(function(c){var a=sum(M.filter(function(e){return e.col===c.id}));return tr([c.name,a.S,a.L,a.I,a.T])});
+    var t2=sum(M);rows.push(tr(["Total",t2.S,t2.L,t2.I,t2.T],1));
+    h+='<div class="card"><b>Collector-wise for month</b>'+tbl(head,rows)+'</div>';
+    var days={};M.forEach(function(e){(days[e.date]=days[e.date]||[]).push(e)});
+    h+='<div class="card"><b>Day-wise</b>'+tbl(["Date"].concat(head.slice(1)),Object.keys(days).sort().map(function(d){var a=sum(days[d]);return tr([d.slice(8)+"-"+d.slice(5,7),a.S,a.L,a.I,a.T])}))+'</div>';
+    TYPES.forEach(function(ty){var dim=new Date(+st.rm.slice(0,4),+st.rm.slice(5,7),0).getDate(),MT=M.filter(function(e){return e.type===ty[0]}),mat={},ctot=[],gt=0,dN;
+    MT.forEach(function(e){var d=+e.date.slice(8);mat[e.cust]=mat[e.cust]||{};mat[e.cust][d]=(mat[e.cust][d]||0)+e.amt});
+    function cl2(v){return'<td>'+(v?Number(v).toLocaleString("en-IN"):"")+'</td>'}
+    var mh='<tr><th>Customer</th>';for(dN=1;dN<=dim;dN++){mh+='<th>'+dN+'</th>';ctot[dN]=0}mh+='<th>Total</th></tr>';
+    var mr=Object.keys(mat).sort(function(a,b){return cname(a).localeCompare(cname(b))}).map(function(k){var s=0,r='<tr><td>'+esc(cname(k))+'</td>';for(dN=1;dN<=dim;dN++){var v=mat[k][dN]||0;s+=v;ctot[dN]+=v;r+=cl2(v)}gt+=s;return r+'<td><b>'+money(s)+'</b></td></tr>'});
+    var mtr='<tr class="t"><td>Total</td>';for(dN=1;dN<=dim;dN++)mtr+=cl2(ctot[dN]);mtr+='<td>'+money(gt)+'</td></tr>';
+    h+='<div class="card"><b>'+ty[1]+' – customer × day (1–'+dim+')</b>'+(mr.length?'<div class="sc"><table>'+mh+mr.join("")+mtr+'</table></div>':'<div class="mu" style="margin-top:6px">No collections this month</div>')+'</div>';});
+    var fr=[],ft=sum([]),mn=["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+    mn.forEach(function(n,i){var y=i<9?fy:fy+1,m=((i+3)%12)+1,k=y+"-"+String(m).padStart(2,"0");var a=sum(D.entries.filter(function(e){return e.date.slice(0,7)===k}));["S","L","I","T"].forEach(function(z){ft[z]+=a[z]});fr.push(tr([n+" "+y,a.S,a.L,a.I,a.T]))});
+    fr.push(tr(["FY "+fyLabel(fy),ft.S,ft.L,ft.I,ft.T],1));
+    h+='<div class="card"><b>Financial year '+fyLabel(fy)+' (Apr–Mar)</b>'+tbl(["Month"].concat(head.slice(1)),fr)+'</div>';
+    h+='<button class="go" id="exp" data-n="monthly-'+st.rm+'.csv">Download CSV</button>';
+    exp=[["Date","Collector","Customer","Type","Amount"]].concat(M.map(function(e){return[e.date,colName(e.col),cname(e.cust),TYPES.find(function(x){return x[0]===e.type})[1],e.amt]}));
+  }
+  window.EXP=exp;return h;
+}
+function viewSetup(){
+  var h='<div class="card"><b>Collectors</b><label>Add collector name</label><input id="cn"><button class="go" id="addc">Add collector</button>'
+  +D.collectors.map(function(c){return'<div class="row"><span>'+esc(c.name)+'</span><button class="sm" data-dc="'+c.id+'">Remove</button></div>'}).join("")+'</div>';
+  h+='<div class="card"><b>Customers</b><label>Account no</label><input id="ca"><label>Customer name</label><input id="cm"><button class="go" id="addm">Add customer</button>'
+  +'<div class="mu" style="margin-top:8px">'+D.customers.length+' customers</div>'
+  +D.customers.map(function(c){return'<div class="row"><span>'+esc(c.acc)+" · "+esc(c.name)+'</span><button class="sm" data-dm="'+c.id+'">Remove</button></div>'}).join("")+'</div>';
+  return h+'<div class="mu">Data is shared across signed-in viewers when sync is available; otherwise it stays on this device.</div>';
+}
+function draw(){
+  document.getElementById("fy").textContent="Financial year "+fyLabel(fyStart(today))+" (1 Apr – 31 Mar)"+(db?" · synced":" · this device only");
+  document.getElementById("v").innerHTML=tab==="c"?viewCollect():tab==="r"?viewReports():viewSetup();
+  document.querySelectorAll(".tabs button").forEach(function(b){b.className=b.dataset.t===tab?"on":""});
+}
+document.addEventListener("click",function(ev){
+  var b=ev.target.closest("button");if(!b)return;var d=b.dataset;
+  if(d.t){tab=d.t;msg="";return draw()}
+  if(d.ty){st.type=d.ty;return draw()}
+  if(d.r){rep=d.r;return draw()}
+  if(d.del)return del("entries",d.del);
+  if(d.dc)return del("collectors",d.dc);
+  if(d.dm)return del("customers",d.dm);
+  if(b.id==="exp"&&window.EXP)return csv(d.n,window.EXP);
+  if(b.id==="save"){
+    var vals=TYPES.map(function(t){return[t[0],parseFloat(document.getElementById("amt"+t[0]).value)]}).filter(function(v){return v[1]>0});
+    if(!st.cust||!vals.length){msg="Choose customer and enter at least one amount";return draw()}
+    vals.forEach(function(v){put("entries",{id:uid(),date:st.date,col:st.col,cust:st.cust,type:v[0],amt:v[1]})});msg="Saved";st.cust="";draw()}
+  if(b.id==="addc"){var n=document.getElementById("cn").value.trim();if(n)put("collectors",{id:uid(),name:n})}
+  if(b.id==="addm"){var a=document.getElementById("ca").value.trim(),m=document.getElementById("cm").value.trim();if(a&&m)put("customers",{id:uid(),acc:a,name:m})}
+});
+document.addEventListener("change",function(ev){
+  var i=ev.target.id;
+  if(i==="col")st.col=ev.target.value;else if(i==="date")st.date=ev.target.value||today;else if(i==="cust")st.cust=ev.target.value;
+  else if(i==="mt")st.mt=ev.target.value;else if(i==="cc")st.cc=ev.target.value;else if(i==="cf")st.cf=ev.target.value||st.cf;else if(i==="ct")st.ct=ev.target.value||st.ct;else if(i==="rd")st.rd=ev.target.value||today;else if(i==="rm")st.rm=ev.target.value||today.slice(0,7);else return;
+  var vs=TYPES.map(function(t){var a=document.getElementById("amt"+t[0]);return a?a.value:""});draw();TYPES.forEach(function(t,i){var a=document.getElementById("amt"+t[0]);if(a)a.value=vs[i]});
+});
+loadLocal();draw();
+try{if(window.claude&&claude.use){claude.use("db").then(function(x){
+  if(!x)return;db=x;D={customers:[],collectors:[],entries:[]};
+  ["customers","collectors","entries"].forEach(function(c){
+    db.collection(c).onSnapshot(function(s){D[c]=s.docs.map(function(d){return d.data()}).sort(function(a,b){return String(a.date||a.acc||a.name).localeCompare(String(b.date||b.acc||b.name))});draw()},function(){})
+  });draw()}).catch(function(){})}}catch(e){}
+</script></body></html>

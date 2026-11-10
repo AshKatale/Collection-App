@@ -1,0 +1,14 @@
+{
+  "name": "Siddhivinayak Mandal – Collections",
+  "short_name": "Collections",
+  "description": "Daily money collection for collectors and administrators",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f9",
+  "theme_color": "#1f6f5c",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
