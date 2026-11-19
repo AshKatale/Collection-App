@@ -10,7 +10,7 @@ type Status = 'loading' | 'signedOut' | 'signedIn';
 type Ctx = {
   status: Status;
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   /** Re-enter the password of the current user when the token expired (keeps all offline data). */
   reauth: (password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -62,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       const res = await loginApi(email.trim(), password);
       await enter(res.token, res.user);
+      return res.user;
     },
     [enter]
   );
