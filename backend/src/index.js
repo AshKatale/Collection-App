@@ -22,6 +22,7 @@ const collectorRoutes = require('./routes/collectors');
 const reportRoutes = require('./routes/reports');
 const adminRoutes = require('./routes/admin');
 const accessRoutes = require('./routes/access');
+const syncRoutes = require('./routes/sync');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -68,6 +69,7 @@ app.use('/api/collectors', collectorRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/access', accessRoutes);
+app.use('/api/sync', syncRoutes); // mobile app only
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

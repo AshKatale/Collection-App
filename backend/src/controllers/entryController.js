@@ -365,75 +365,88 @@ const entryHistory = async (req, res) => {
  * Admin: anything. Owner: own organisation. Collector: entries of their assigned customers,
  * for TODAY or an owner-approved date, and only amount / type / notes.
  */
+/**
+ * Shared update logic (web endpoint + mobile sync).
+ * Returns { error: [status, message] } or { entry }.
+ */
+async function applyUpdate(user, entryId, body) {
+  const entry = await prisma.entry.findFirst({ where: { id: entryId, deletedAt: null } });
+  if (!entry) return { error: [404, 'Entry not found'] };
+
+  if (user.role === 'OWNER' && entry.ownerId !== user.id) return { error: [403, 'Access denied'] };
+  if (user.role === 'COLLECTOR') {
+    if (!(await collectorHasCustomer(user, entry.customerId))) return { error: [403, 'Access denied'] };
+    if (!canModify(user, entry, await loadGrants(user))) return { error: [403, TODAY_ONLY_MSG] };
+  }
+
+  const { date, type, amount, notes, collectorId, customerId } = body;
+  const data = {};
+
+  if (type !== undefined) {
+    if (!TYPES.includes(type)) return { error: [400, 'type must be SAVINGS, LOAN, or INTEREST'] };
+    data.type = type;
+  }
+  if (amount !== undefined) {
+    const a = parsePositiveAmount(amount);
+    if (a === null) return { error: [400, 'amount must be a positive number'] };
+    data.amount = a;
+  }
+  if (notes !== undefined) data.notes = notes ? String(notes).slice(0, 300) : null;
+
+  if (user.role !== 'COLLECTOR') {
+    if (date !== undefined) {
+      const d = parseDateOnly(date);
+      if (!d) return { error: [400, 'date must be YYYY-MM-DD'] };
+      data.date = d;
+    }
+    if (customerId !== undefined && customerId !== entry.customerId) {
+      const c = await prisma.customer.findUnique({ where: { id: customerId } });
+      if (!c || (user.role === 'OWNER' && c.ownerId !== user.id)) {
+        return { error: [403, 'Invalid customer for this account'] };
+      }
+      data.customerId = c.id;
+      data.ownerId = c.ownerId;
+    }
+    if (collectorId !== undefined && collectorId !== entry.collectorId) {
+      const ownerForCheck = data.ownerId || entry.ownerId;
+      const col = await prisma.user.findUnique({
+        where: { id: collectorId },
+        select: { role: true, ownerId: true, isActive: true },
+      });
+      if (!col || col.role !== 'COLLECTOR' || !col.isActive || col.ownerId !== ownerForCheck) {
+        return { error: [400, 'Invalid collector for this customer'] };
+      }
+      data.collectorId = collectorId;
+    }
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.entry.update({ where: { id: entry.id }, data, include: entryInclude });
+    await tx.auditLog.create({
+      data: {
+        entryId: entry.id,
+        actorId: user.id,
+        actorName: user.name,
+        action: 'UPDATE',
+        before: snapshot(entry),
+        after: snapshot(row),
+      },
+    });
+    return row;
+  });
+  return { entry: updated };
+}
+
+/**
+ * PUT /api/entries/:id
+ * Admin: anything. Owner: own organisation. Collector: entries of their assigned customers,
+ * for TODAY or an owner-approved date, and only amount / type / notes.
+ */
 const updateEntry = async (req, res) => {
   try {
-    const { user } = req;
-    const entry = await prisma.entry.findFirst({ where: { id: req.params.id, deletedAt: null } });
-    if (!entry) return fail(res, 404, 'Entry not found');
-
-    if (user.role === 'OWNER' && entry.ownerId !== user.id) return fail(res, 403, 'Access denied');
-    if (user.role === 'COLLECTOR') {
-      if (!(await collectorHasCustomer(user, entry.customerId))) return fail(res, 403, 'Access denied');
-      if (!canModify(user, entry, await loadGrants(user))) return fail(res, 403, TODAY_ONLY_MSG);
-    }
-
-    const { date, type, amount, notes, collectorId, customerId } = req.body;
-    const data = {};
-
-    if (type !== undefined) {
-      if (!TYPES.includes(type)) return fail(res, 400, 'type must be SAVINGS, LOAN, or INTEREST');
-      data.type = type;
-    }
-    if (amount !== undefined) {
-      const a = parsePositiveAmount(amount);
-      if (a === null) return fail(res, 400, 'amount must be a positive number');
-      data.amount = a;
-    }
-    if (notes !== undefined) data.notes = notes ? String(notes).slice(0, 300) : null;
-
-    if (user.role !== 'COLLECTOR') {
-      if (date !== undefined) {
-        const d = parseDateOnly(date);
-        if (!d) return fail(res, 400, 'date must be YYYY-MM-DD');
-        data.date = d;
-      }
-      if (customerId !== undefined && customerId !== entry.customerId) {
-        const c = await prisma.customer.findUnique({ where: { id: customerId } });
-        if (!c || (user.role === 'OWNER' && c.ownerId !== user.id)) {
-          return fail(res, 403, 'Invalid customer for this account');
-        }
-        data.customerId = c.id;
-        data.ownerId = c.ownerId;
-      }
-      if (collectorId !== undefined && collectorId !== entry.collectorId) {
-        const ownerForCheck = data.ownerId || entry.ownerId;
-        const col = await prisma.user.findUnique({
-          where: { id: collectorId },
-          select: { role: true, ownerId: true, isActive: true },
-        });
-        if (!col || col.role !== 'COLLECTOR' || !col.isActive || col.ownerId !== ownerForCheck) {
-          return fail(res, 400, 'Invalid collector for this customer');
-        }
-        data.collectorId = collectorId;
-      }
-    }
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.entry.update({ where: { id: entry.id }, data, include: entryInclude });
-      await tx.auditLog.create({
-        data: {
-          entryId: entry.id,
-          actorId: user.id,
-          actorName: user.name,
-          action: 'UPDATE',
-          before: snapshot(entry),
-          after: snapshot(row),
-        },
-      });
-      return row;
-    });
-
-    return res.json({ success: true, data: present(user, updated, await loadGrants(user)) });
+    const result = await applyUpdate(req.user, req.params.id, req.body);
+    if (result.error) return fail(res, ...result.error);
+    return res.json({ success: true, data: present(req.user, result.entry, await loadGrants(req.user)) });
   } catch (err) {
     console.error('Update entry error:', err);
     return fail(res, 500, 'Internal server error');
@@ -444,30 +457,39 @@ const updateEntry = async (req, res) => {
  * DELETE /api/entries/:id  (soft delete + audit)
  * Same permissions as update.
  */
+/**
+ * Shared soft-delete logic (web endpoint + mobile sync).
+ * Returns { error: [status, message] } or { ok: true }.
+ */
+async function applyDelete(user, entryId) {
+  const entry = await prisma.entry.findFirst({ where: { id: entryId, deletedAt: null } });
+  if (!entry) return { error: [404, 'Entry not found'] };
+
+  if (user.role === 'OWNER' && entry.ownerId !== user.id) return { error: [403, 'Access denied'] };
+  if (user.role === 'COLLECTOR') {
+    if (!(await collectorHasCustomer(user, entry.customerId))) return { error: [403, 'Access denied'] };
+    if (!canModify(user, entry, await loadGrants(user))) return { error: [403, TODAY_ONLY_MSG] };
+  }
+
+  await prisma.$transaction([
+    prisma.entry.update({ where: { id: entry.id }, data: { deletedAt: new Date(), clientId: null } }),
+    prisma.auditLog.create({
+      data: {
+        entryId: entry.id,
+        actorId: user.id,
+        actorName: user.name,
+        action: 'DELETE',
+        before: snapshot(entry),
+      },
+    }),
+  ]);
+  return { ok: true };
+}
+
 const deleteEntry = async (req, res) => {
   try {
-    const { user } = req;
-    const entry = await prisma.entry.findFirst({ where: { id: req.params.id, deletedAt: null } });
-    if (!entry) return fail(res, 404, 'Entry not found');
-
-    if (user.role === 'OWNER' && entry.ownerId !== user.id) return fail(res, 403, 'Access denied');
-    if (user.role === 'COLLECTOR') {
-      if (!(await collectorHasCustomer(user, entry.customerId))) return fail(res, 403, 'Access denied');
-      if (!canModify(user, entry, await loadGrants(user))) return fail(res, 403, TODAY_ONLY_MSG);
-    }
-
-    await prisma.$transaction([
-      prisma.entry.update({ where: { id: entry.id }, data: { deletedAt: new Date(), clientId: null } }),
-      prisma.auditLog.create({
-        data: {
-          entryId: entry.id,
-          actorId: user.id,
-          actorName: user.name,
-          action: 'DELETE',
-          before: snapshot(entry),
-        },
-      }),
-    ]);
+    const result = await applyDelete(req.user, req.params.id);
+    if (result.error) return fail(res, ...result.error);
     return res.json({ success: true, data: { message: 'Entry deleted' } });
   } catch (err) {
     console.error('Delete entry error:', err);
@@ -484,4 +506,10 @@ module.exports = {
   entryHistory,
   updateEntry,
   deleteEntry,
+  // shared with the mobile sync route
+  createEntries,
+  applyUpdate,
+  applyDelete,
+  present,
+  entryInclude,
 };

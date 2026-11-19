@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { login, register, me, changePassword } = require('../controllers/authController');
+const { login, register, me, changePassword, refresh } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const { roleGuard } = require('../middleware/roleGuard');
 
@@ -9,6 +9,7 @@ router.post('/login', login);
 
 // Authenticated
 router.get('/me', auth, me);
+router.post('/refresh', auth, refresh);
 router.put('/change-password', auth, changePassword);
 
 // Registration: Admin can register anyone (Admin, Owner, Collector); Owner can register Collector

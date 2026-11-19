@@ -195,10 +195,10 @@ export default function Collect() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <SyncPill />
             <Pressable
-              onPress={() => (online ? setAddOpen(true) : toast.error(t('Adding a customer needs an internet connection')))}
+              onPress={() => setAddOpen(true)}
               hitSlop={8}
               accessibilityLabel="Add customer"
-              style={{ padding: 6, opacity: online ? 1 : 0.5 }}
+              style={{ padding: 6 }}
             >
               <Icon name="user-plus" size={22} color="#fff" />
             </Pressable>
