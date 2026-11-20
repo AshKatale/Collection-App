@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Button, Field, Icon, Sheet, toast } from '@/components/ui';
 import { useAuth } from '@/context/auth';
@@ -27,7 +28,9 @@ export default function Login() {
     setBusy(true);
     setError('');
     try {
-      await login(email, password);
+      const u = await login(email, password);
+      // land on the right home screen for this role (collectors start on Collect)
+      setTimeout(() => router.replace(u.role === 'COLLECTOR' ? '/collect' : '/'), 400);
     } catch (err: any) {
       setError(err?.response ? errorMessage(err, t('Login failed')) : t('Cannot reach the server. Login needs an internet connection.'));
     } finally {

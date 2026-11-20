@@ -5,6 +5,15 @@ const jwt = require('jsonwebtoken');
 const MIN_PASSWORD = 6;
 const normalizeEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
 
+// Web sessions last 7 days. The mobile app works offline for long stretches, so its
+// tokens live longer and are renewed (POST /auth/refresh) whenever the phone is online.
+const WEB_TOKEN_TTL = '7d';
+const MOBILE_TOKEN_TTL = process.env.MOBILE_TOKEN_TTL || '90d';
+const signToken = (user, mobile) =>
+  jwt.sign({ id: user.id, name: user.name, role: user.role, ownerId: user.ownerId }, process.env.JWT_SECRET, {
+    expiresIn: mobile ? MOBILE_TOKEN_TTL : WEB_TOKEN_TTL,
+  });
+
 
 /**
  * POST /api/auth/login
@@ -28,11 +37,7 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign(
-      { id: user.id, name: user.name, role: user.role, ownerId: user.ownerId },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = signToken(user, req.body.client === 'mobile');
 
     return res.json({
       success: true,
@@ -181,4 +186,22 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { login, register, me, changePassword };
+/**
+ * POST /api/auth/refresh  (mobile app)
+ * Swaps a still-valid token for a fresh long-lived one. The auth middleware has
+ * already re-checked that the user exists and is active.
+ */
+const refresh = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, name: true, email: true, phone: true, role: true, ownerId: true },
+    });
+    return res.json({ success: true, data: { token: signToken(user, true), user } });
+  } catch (err) {
+    console.error('Refresh error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+module.exports = { login, register, me, changePassword, refresh };

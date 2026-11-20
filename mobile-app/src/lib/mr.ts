@@ -242,6 +242,8 @@ export const mr: Record<string, string> = {
   'You are offline. Entries are saved on this phone and will upload automatically when you reconnect.': 'तुम्ही ऑफलाइन आहात. नोंदी या फोनमध्ये जतन होतात आणि इंटरनेट आल्यावर आपोआप अपलोड होतील.',
   'You can only collect from customers assigned to you. Ask your owner to assign some, or register one yourself.': 'तुम्ही फक्त तुम्हाला नियुक्त केलेल्या ग्राहकांकडून वसुली करू शकता. मालकाला ग्राहक नियुक्त करायला सांगा किंवा स्वतः नोंदवा.',
   customers: 'ग्राहक',
+  'Could not load collectors': 'वसुलीदार लोड करता आले नाहीत',
+  'No collectors found. Add collectors first to assign customers.': 'वसुलीदार सापडले नाहीत. ग्राहक नियुक्त करण्यासाठी आधी वसुलीदार जोडा.',
   'entries today': 'आजच्या नोंदी',
   usual: 'नेहमीची',
   '{a} of {b} customers selected': '{b} पैकी {a} ग्राहक निवडले',

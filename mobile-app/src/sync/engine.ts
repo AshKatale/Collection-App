@@ -2,7 +2,7 @@ import { AppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useSyncExternalStore } from 'react';
 import { pullApi, pushApi, refreshApi } from '@/api/endpoints';
-import { getAuthToken, setAuthToken } from '@/api/client';
+import { getAuthToken, setAuthToken, setReachabilityHandler } from '@/api/client';
 import { isDbOpen, setMeta, getMeta } from '@/db';
 import { applyPull, applyResults, outboxCounts, parsePayload, releaseBatch, resetSending, takeBatch } from '@/db/repo';
 import { PULL_DAYS, PUSH_CHUNK, TOKEN_REFRESH_AFTER_MS } from '@/lib/config';
@@ -145,7 +145,13 @@ async function doSync(_opts: { quiet?: boolean }): Promise<SyncOutcome> {
       syncing: false,
       online: offline ? false : state.online,
       sessionExpired: expired ? true : state.sessionExpired,
-      lastError: expired ? 'Session expired. Log in again to sync.' : offline ? null : errorMessage(err),
+      lastError: expired
+        ? 'Session expired. Log in again to sync.'
+        : err?.response?.status === 404 && String(err?.config?.url || '').includes('/sync/')
+          ? 'This server does not have the offline-sync API yet. Update and restart the backend.'
+          : offline
+            ? null
+            : errorMessage(err),
       version: state.version + 1,
     });
     return { ok: false, pushed, failed, offline, message: expired ? 'Session expired' : errorMessage(err) };
@@ -170,14 +176,21 @@ export async function startSync(): Promise<void> {
   await refreshCounts();
 
   const net = await NetInfo.fetch().catch(() => null);
-  set({ online: net ? !!net.isConnected && net.isInternetReachable !== false : true });
+  // Android's "internet reachable" probe is unreliable (tunnels, captive Wi-Fi...), so only a missing
+  // connection counts as offline here; the real answer comes from our own requests (below).
+  set({ online: net ? net.isConnected !== false : true });
 
+  const goOnline = (online: boolean) => {
+    const wasOffline = !state.online;
+    if (online !== state.online) set({ online });
+    if (online && wasOffline && !state.syncing) void syncNow({ quiet: true });
+  };
+  setReachabilityHandler(goOnline);
+  unsubs.push(() => setReachabilityHandler(null));
   unsubs.push(
     NetInfo.addEventListener((s) => {
-      const online = !!s.isConnected && s.isInternetReachable !== false;
-      const wasOffline = !state.online;
-      set({ online });
-      if (online && wasOffline) void syncNow({ quiet: true });
+      if (s.isConnected === false) set({ online: false });
+      else goOnline(true);
     })
   );
   const appSub = AppState.addEventListener('change', (s) => {

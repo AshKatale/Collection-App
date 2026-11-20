@@ -9,6 +9,7 @@ const http = axios.create({
 
 let token: string | null = null;
 let onUnauthorized: (() => void) | null = null;
+let onReachability: ((reachable: boolean) => void) | null = null;
 
 export const setApiBaseUrl = (url: string) => {
   http.defaults.baseURL = url.trim().replace(/\/+$/, '');
@@ -18,6 +19,10 @@ export const setAuthToken = (t: string | null) => {
   token = t;
 };
 export const getAuthToken = () => token;
+/** Called with true after any server answer (even an error status) and false when the server cannot be reached. */
+export const setReachabilityHandler = (fn: ((reachable: boolean) => void) | null) => {
+  onReachability = fn;
+};
 export const setUnauthorizedHandler = (fn: (() => void) | null) => {
   onUnauthorized = fn;
 };
@@ -28,14 +33,19 @@ http.interceptors.request.use((config) => {
 });
 
 http.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    onReachability?.(true);
+    return res;
+  },
   async (error: AxiosError) => {
+    if (error.response) onReachability?.(true);
     const cfg = error.config as (AxiosRequestConfig & { __retried?: boolean }) | undefined;
     // Safe reads are retried once on timeout / network error (the first try wakes a sleeping database)
     if (cfg && !error.response && (cfg.method || 'get').toLowerCase() === 'get' && !cfg.__retried) {
       cfg.__retried = true;
       return http(cfg);
     }
+    if (!error.response) onReachability?.(false);
     const isLogin = String(cfg?.url || '').includes('/auth/login');
     if (error.response?.status === 401 && !isLogin) onUnauthorized?.();
     return Promise.reject(error);

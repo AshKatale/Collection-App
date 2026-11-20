@@ -28,13 +28,9 @@ export default function TabsLayout() {
         lazy: true,
       }}
     >
-      <Tabs.Protected guard={manager}>
-        <Tabs.Screen name="index" options={{ title: t('Dashboard'), tabBarIcon: icon('grid') }} />
-      </Tabs.Protected>
+      <Tabs.Screen name="index" options={{ title: t('Dashboard'), tabBarIcon: icon('grid'), href: manager ? undefined : null }} />
       <Tabs.Screen name="collect" options={{ title: t('Collect'), tabBarIcon: icon('check-square') }} />
-      <Tabs.Protected guard={manager}>
-        <Tabs.Screen name="entries" options={{ title: t('Entries'), tabBarIcon: icon('list') }} />
-      </Tabs.Protected>
+      <Tabs.Screen name="entries" options={{ title: t('Entries'), tabBarIcon: icon('list'), href: manager ? undefined : null }} />
       <Tabs.Screen name="reports" options={{ title: t('Reports'), tabBarIcon: icon('bar-chart-2') }} />
       <Tabs.Screen name="more" options={{ title: t('More'), tabBarIcon: icon('menu') }} />
     </Tabs>

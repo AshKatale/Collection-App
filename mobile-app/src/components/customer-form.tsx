@@ -6,7 +6,6 @@ import { createCustomerApi, getCollectors, updateCustomerApi, ServerCustomer } f
 import { useAuth } from '@/context/auth';
 import { useT } from '@/context/settings';
 import { errorMessage } from '@/lib/format';
-import { useSync } from '@/sync/engine';
 
 type Props = { visible: boolean; onClose: () => void; onSaved: (c: ServerCustomer) => void; initial?: (Partial<ServerCustomer> & { id: string }) | null };
 
@@ -14,11 +13,11 @@ type Props = { visible: boolean; onClose: () => void; onSaved: (c: ServerCustome
 export function CustomerFormSheet({ visible, onClose, onSaved, initial }: Props) {
   const { user } = useAuth();
   const t = useT();
-  const { online } = useSync();
   const manager = user?.role !== 'COLLECTOR';
   const [f, setF] = useState({ accountNo: '', name: '', phone: '', address: '', defaultSavings: '', defaultLoan: '', defaultInterest: '', collectorId: '' });
   const [collectors, setCollectors] = useState<{ id: string; name: string; email: string; isActive: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [collectorsError, setCollectorsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -32,13 +31,18 @@ export function CustomerFormSheet({ visible, onClose, onSaved, initial }: Props)
       defaultInterest: String(initial?.defaultInterest ?? ''),
       collectorId: initial?.assignments?.[0]?.collectorId ?? '',
     });
-    if (manager && online) getCollectors().then(setCollectors).catch(() => undefined);
-  }, [visible, initial, manager, online]);
+    if (manager) {
+      setCollectorsError(null);
+      getCollectors()
+        .then(setCollectors)
+        .catch((e) => setCollectorsError(errorMessage(e, t('Could not load collectors'))));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initial, manager]);
 
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
 
   const submit = async () => {
-    if (!online) return toast.error(t('Adding or editing a customer needs an internet connection'));
     if (!f.accountNo.trim() || !f.name.trim()) return toast.error(t('Account number and name are required'));
     const out: Record<string, any> = { ...f, accountNo: f.accountNo.trim(), name: f.name.trim() };
     for (const k of ['defaultSavings', 'defaultLoan', 'defaultInterest'] as const) {
@@ -60,13 +64,18 @@ export function CustomerFormSheet({ visible, onClose, onSaved, initial }: Props)
 
   return (
     <Sheet visible={visible} onClose={onClose} title={initial ? t('Edit customer') : t('Register new customer')}>
-      {!online ? (
-        <AppText size={13} color="warnText" style={{ backgroundColor: '#fef3c7', padding: 8, borderRadius: 8 }}>
-          {t('You are offline. Customers can only be added or changed when you are online.')}
-        </AppText>
-      ) : null}
       <Field label={t('Account Number / Serial No *')} value={f.accountNo} onChangeText={set('accountNo')} autoCapitalize="characters" placeholder="e.g. 686" />
       <Field label={t('Customer Full Name *')} value={f.name} onChangeText={set('name')} placeholder="e.g. Ramesh Patil" />
+      {manager && collectorsError ? (
+        <AppText size={12} color="danger">
+          {collectorsError}
+        </AppText>
+      ) : null}
+      {manager && collectors.length === 0 && !collectorsError ? (
+        <AppText size={12} color="textMuted">
+          {t('No collectors found. Add collectors first to assign customers.')}
+        </AppText>
+      ) : null}
       {manager && collectors.length > 0 ? (
         <Select
           label={t('Assign to Collector')}

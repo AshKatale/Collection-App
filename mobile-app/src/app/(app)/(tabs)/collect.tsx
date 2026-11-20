@@ -195,10 +195,10 @@ export default function Collect() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <SyncPill />
             <Pressable
-              onPress={() => (online ? setAddOpen(true) : toast.error(t('Adding a customer needs an internet connection')))}
+              onPress={() => setAddOpen(true)}
               hitSlop={8}
               accessibilityLabel="Add customer"
-              style={{ padding: 6, opacity: online ? 1 : 0.5 }}
+              style={{ padding: 6 }}
             >
               <Icon name="user-plus" size={22} color="#fff" />
             </Pressable>
@@ -397,6 +397,7 @@ function CustomerSheet({
                       <Pressable
                         hitSlop={8}
                         style={{ padding: 6 }}
+                        accessibilityLabel="Save amount"
                         onPress={async () => {
                           const v = Number(editValue);
                           if (!(v > 0)) return toast.error(t('Enter an amount greater than 0'));
@@ -405,7 +406,7 @@ function CustomerSheet({
                       >
                         <Icon name="check" size={20} color="success" />
                       </Pressable>
-                      <Pressable hitSlop={8} style={{ padding: 6 }} onPress={() => setEditingId(null)}>
+                      <Pressable hitSlop={8} style={{ padding: 6 }} accessibilityLabel="Cancel edit" onPress={() => setEditingId(null)}>
                         <Icon name="x" size={20} color="textMuted" />
                       </Pressable>
                     </View>
