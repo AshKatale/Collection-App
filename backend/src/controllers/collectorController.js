@@ -1,5 +1,6 @@
 const prisma = require('../db');
 const bcrypt = require('bcryptjs');
+const auth = require('../middleware/auth');
 
 const normalizeEmail = (e) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
 
@@ -127,11 +128,19 @@ const updateCollector = async (req, res) => {
       data.password = await bcrypt.hash(password, 10);
     }
 
-    const updated = await prisma.user.update({
-      where: { id: req.params.id },
-      data,
-      select: { id: true, name: true, email: true, phone: true, role: true, ownerId: true, isActive: true, createdAt: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.user.update({
+        where: { id: req.params.id },
+        data,
+        select: { id: true, name: true, email: true, phone: true, role: true, ownerId: true, isActive: true, createdAt: true },
+      });
+      // A deactivated collector must not stay assigned to customers (nobody could collect from them)
+      if (data.isActive === false && collector.isActive) {
+        await tx.collectorCustomer.deleteMany({ where: { collectorId: row.id } });
+      }
+      return row;
     });
+    auth.invalidateUser(updated.id);
 
     return res.json({ success: true, data: updated });
   } catch (err) {
@@ -212,17 +221,13 @@ const assignCustomers = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // replace=true: the list is the collector's complete set (unchecked customers get removed)
-    if (replace) {
-      await prisma.collectorCustomer.deleteMany({
-        where: { collectorId, customerId: { notIn: customerIds } },
-      });
-      if (customerIds.length === 0) {
-        return res.json({ success: true, data: { message: 'All customers unassigned' } });
-      }
+    // replace=true with an empty list: unassign everything (nothing to validate)
+    if (replace && customerIds.length === 0) {
+      await prisma.collectorCustomer.deleteMany({ where: { collectorId } });
+      return res.json({ success: true, data: { message: 'All customers unassigned' } });
     }
 
-    // Verify all customers belong to the right owner
+    // Verify all customers belong to the right owner (BEFORE changing anything)
     const customers = await prisma.customer.findMany({
       where: { id: { in: customerIds } },
     });
@@ -241,10 +246,11 @@ const assignCustomers = async (req, res) => {
       customerId,
     }));
 
-    await prisma.collectorCustomer.createMany({
-      data,
-      skipDuplicates: true,
-    });
+    // One transaction: with replace, removing the unchecked customers and adding the checked ones succeed or fail together
+    await prisma.$transaction([
+      ...(replace ? [prisma.collectorCustomer.deleteMany({ where: { collectorId, customerId: { notIn: customerIds } } })] : []),
+      prisma.collectorCustomer.createMany({ data, skipDuplicates: true }),
+    ]);
 
     return res.json({ success: true, data: { message: `${customerIds.length} customer(s) assigned` } });
   } catch (err) {

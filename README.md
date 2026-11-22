@@ -1,4 +1,4 @@
-# 💰 Daily Money Collection App (Siddhivinayak Mandal)
+# 💰 Daily Money Collection App (GKC Collection)
 
 A full-stack, multi-tenant daily money collection and accounting system built with **React (JavaScript)** and **Express.js (Node.js)** with **PostgreSQL (Neon)** and **Prisma ORM**.
 
@@ -79,8 +79,8 @@ Collectors-App/
 
 ## 🔑 Default Credentials
 
-- **Email**: `admin@admin.com`
-- **Password**: `admin123`
+- **Email**: ``
+- **Password**: ``
 
 ---
 

@@ -7,8 +7,12 @@ import * as SQLite from 'expo-sqlite';
 let db: SQLite.SQLiteDatabase | null = null;
 let currentUserId: string | null = null;
 
-const SCHEMA_VERSION = 1;
-
+/**
+ * To change the local database in a later app version (even one shipped over the air): NEVER edit an
+ * existing entry below. Append a NEW array with the extra statements (ALTER TABLE ..., CREATE TABLE ...).
+ * The schema version is the number of entries, so every phone upgrades from wherever it is, once, inside
+ * a transaction, without losing unsynced data.
+ */
 const MIGRATIONS: string[][] = [
   [
     `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT)`,
@@ -63,10 +67,13 @@ const MIGRATIONS: string[][] = [
   ],
 ];
 
+const SCHEMA_VERSION = MIGRATIONS.length;
+
 async function migrate(d: SQLite.SQLiteDatabase) {
   await d.execAsync('PRAGMA journal_mode = WAL;');
   const row = await d.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let v = row?.user_version ?? 0;
+  // A database written by a NEWER app version (the user went back to an older build): leave it untouched.
   while (v < SCHEMA_VERSION) {
     const stmts = MIGRATIONS[v];
     await d.withTransactionAsync(async () => {

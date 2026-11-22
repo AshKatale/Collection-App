@@ -15,6 +15,7 @@ import {
 import { SettingsProvider, useSettings } from '@/context/settings';
 import { AuthProvider, useAuth } from '@/context/auth';
 import { AppText, Button, Toaster } from '@/components/ui';
+import { UpdatePrompt } from '@/components/update-prompt';
 import { useTheme } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -64,6 +65,7 @@ function Gate() {
         </Stack.Protected>
       </Stack>
       <Toaster />
+      <UpdatePrompt />
     </View>
   );
 }

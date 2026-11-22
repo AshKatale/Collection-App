@@ -55,7 +55,7 @@ const snapshot = (e) => ({
  * Shared create logic for single + batch endpoints.
  * Validates scope, then creates every item atomically (all or nothing).
  */
-async function createEntries(user, { date, customerId, collectorId, items }) {
+async function createEntries(user, { date, customerId, collectorId, items, grants }) {
   const entryDate = parseDateOnly(date);
   if (!entryDate) return { error: [400, 'date must be YYYY-MM-DD'] };
   if (!customerId) return { error: [400, 'customerId is required'] };
@@ -78,7 +78,8 @@ async function createEntries(user, { date, customerId, collectorId, items }) {
   }
 
   // Collectors may only record today's collections
-  if (user.role === 'COLLECTOR' && !isDateWritable(user, await loadGrants(user), date)) {
+  // `grants` may be passed in (the mobile sync loads them once per push); otherwise load them here
+  if (user.role === 'COLLECTOR' && !isDateWritable(user, grants ?? (await loadGrants(user)), date)) {
     return { error: [403, TODAY_ONLY_MSG] };
   }
 
@@ -369,14 +370,14 @@ const entryHistory = async (req, res) => {
  * Shared update logic (web endpoint + mobile sync).
  * Returns { error: [status, message] } or { entry }.
  */
-async function applyUpdate(user, entryId, body) {
+async function applyUpdate(user, entryId, body, grants) {
   const entry = await prisma.entry.findFirst({ where: { id: entryId, deletedAt: null } });
   if (!entry) return { error: [404, 'Entry not found'] };
 
   if (user.role === 'OWNER' && entry.ownerId !== user.id) return { error: [403, 'Access denied'] };
   if (user.role === 'COLLECTOR') {
     if (!(await collectorHasCustomer(user, entry.customerId))) return { error: [403, 'Access denied'] };
-    if (!canModify(user, entry, await loadGrants(user))) return { error: [403, TODAY_ONLY_MSG] };
+    if (!canModify(user, entry, grants ?? (await loadGrants(user)))) return { error: [403, TODAY_ONLY_MSG] };
   }
 
   const { date, type, amount, notes, collectorId, customerId } = body;
@@ -461,14 +462,14 @@ const updateEntry = async (req, res) => {
  * Shared soft-delete logic (web endpoint + mobile sync).
  * Returns { error: [status, message] } or { ok: true }.
  */
-async function applyDelete(user, entryId) {
+async function applyDelete(user, entryId, grants) {
   const entry = await prisma.entry.findFirst({ where: { id: entryId, deletedAt: null } });
   if (!entry) return { error: [404, 'Entry not found'] };
 
   if (user.role === 'OWNER' && entry.ownerId !== user.id) return { error: [403, 'Access denied'] };
   if (user.role === 'COLLECTOR') {
     if (!(await collectorHasCustomer(user, entry.customerId))) return { error: [403, 'Access denied'] };
-    if (!canModify(user, entry, await loadGrants(user))) return { error: [403, TODAY_ONLY_MSG] };
+    if (!canModify(user, entry, grants ?? (await loadGrants(user)))) return { error: [403, TODAY_ONLY_MSG] };
   }
 
   await prisma.$transaction([

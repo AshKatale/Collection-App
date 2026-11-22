@@ -254,33 +254,39 @@ function yearlyDoc(sections) {
 function customerDoc(data) {
   const range = data.from || data.to ? `${data.from ? displayDate(data.from) : '…'} to ${data.to ? displayDate(data.to) : '…'}` : 'All dates';
   const body = [
-    [th('Sr'), th('Date'), th('Type'), th('Amount'), th('Collector', { alignment: 'left' }), th('Notes', { alignment: 'left' })],
-    ...data.entries.map((e, i) => [
+    [
+      th('Sr'),
+      th('Date'),
+      th('Savings'),
+      th('Loan'),
+      th('Interest'),
+      th('Total'),
+      th('Collector', { alignment: 'left' }),
+      th('Notes', { alignment: 'left' }),
+    ],
+    ...data.days.map((d, i) => [
       td(i + 1, { alignment: 'center' }),
-      td(displayDate(e.date), { alignment: 'center' }),
-      td(TYPE_LABEL[e.type]),
-      money(e.amount),
-      td(e.collectorName),
-      td(e.notes || ''),
+      td(displayDate(d.date), { alignment: 'center' }),
+      money(d.savings),
+      money(d.loan),
+      money(d.interest),
+      money(d.total, { bold: true }),
+      td(d.collectorName),
+      td(d.notes || ''),
     ]),
   ];
   const t = data.totals;
-  const content = [
-    { table: { headerRows: 1, widths: [22, 60, 70, 60, 90, '*'], body }, layout },
-    { text: 'Totals', bold: true, color: GREEN, margin: [0, 12, 0, 4] },
-    {
-      table: {
-        widths: [120, 80],
-        body: [
-          [td('Savings'), money(t.savings)],
-          [td('Loan Repayment'), money(t.loan)],
-          [td('Interest'), money(t.interest)],
-          [totalCell('Total'), money(t.total, { bold: true, fillColor: LIGHT })],
-        ],
-      },
-      layout,
-    },
-  ];
+  body.push([
+    totalCell(''),
+    totalCell('Total', { alignment: 'center' }),
+    money(t.savings, { bold: true, fillColor: LIGHT }),
+    money(t.loan, { bold: true, fillColor: LIGHT }),
+    money(t.interest, { bold: true, fillColor: LIGHT }),
+    money(t.total, { bold: true, fillColor: LIGHT }),
+    totalCell(''),
+    totalCell(''),
+  ]);
+  const content = [{ table: { headerRows: 1, widths: [20, 56, 46, 46, 46, 52, 70, '*'], body }, layout }];
   return baseDoc({ title: ORG_NAME, subtitle: `${data.customer.accountNo} · ${data.customer.name} – ${range}`, content });
 }
 

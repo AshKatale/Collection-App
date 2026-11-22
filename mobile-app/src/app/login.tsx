@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText, Button, Field, Icon, Sheet, toast } from '@/components/ui';
+import { AppText, Button, Field, Icon } from '@/components/ui';
 import { useAuth } from '@/context/auth';
 import { useSettings, useT } from '@/context/settings';
 import { errorMessage } from '@/lib/format';
@@ -20,8 +20,6 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [serverOpen, setServerOpen] = useState(false);
-  const [url, setUrl] = useState(settings.apiUrl);
 
   const submit = async () => {
     if (!email.trim() || !password) return setError(t('Enter your email and password'));
@@ -81,27 +79,8 @@ export default function Login() {
               {settings.lang === 'en' ? 'मराठी' : 'English'}
             </AppText>
           </Pressable>
-          <Pressable onPress={() => setServerOpen(true)}>
-            <AppText color="textMuted" size={13}>
-              {t('Server')}
-            </AppText>
-          </Pressable>
         </View>
       </ScrollView>
-
-      <Sheet visible={serverOpen} onClose={() => setServerOpen(false)} title={t('Server address')}>
-        <Field label="API URL" value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint="e.g. https://your-app.onrender.com/api" />
-        <Button
-          title={t('Save')}
-          onPress={() => {
-            const clean = url.trim().replace(/\/+$/, '');
-            if (!/^https?:\/\//i.test(clean)) return toast.error(t('Enter a full URL starting with http:// or https://'));
-            update({ apiUrl: clean });
-            setServerOpen(false);
-            toast.success(t('Server address saved'));
-          }}
-        />
-      </Sheet>
     </KeyboardAvoidingView>
   );
 }

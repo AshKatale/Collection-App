@@ -40,7 +40,7 @@ export default function Login() {
           <HandCoins className="h-8 w-8" />
         </div>
         <h2 className="mt-4 text-2xl font-bold tracking-tight text-gray-900">
-          Siddhivinayak Mandal
+          GKC Collection
         </h2>
         <p className="mt-1 text-sm text-gray-500">
           Daily collection
@@ -65,7 +65,7 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@admin.com"
+                placeholder="name@example.com"
                 className="input-field"
                 autoComplete="email"
               />
@@ -94,10 +94,6 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-6 border-t border-gray-100 pt-4 text-xs text-center text-gray-400">
-            Default Admin: <span className="font-mono text-gray-600">admin@admin.com</span> / <span className="font-mono text-gray-600">admin123</span>
-          </div>
         </div>
       </div>
     </div>

@@ -2,11 +2,35 @@ import { useState, useEffect } from 'react';
 import { Wallet, PiggyBank, TrendingDown, Percent } from 'lucide-react';
 import { getCustomerReport } from '../../api/reports.js';
 import { getCustomers } from '../../api/customers.js';
-import { formatMoney, formatDate, todayISO, fyStart, TYPE_LABELS, TYPE_BADGE, errorMessage } from '../../utils/helpers.js';
+import { formatMoney, formatDate, todayISO, fyStart, errorMessage } from '../../utils/helpers.js';
 import { SkeletonRows } from '../../components/common/Loading.jsx';
 import StatCard from '../../components/common/StatCard.jsx';
 import ExportButtons from '../../components/common/ExportButtons.jsx';
 import { toast } from '../../components/common/Toast.jsx';
+
+/** entries (one per type) -> one row per date with Savings / Loan / Interest / Total */
+function groupByDay(entries) {
+  const map = new Map();
+  entries.forEach((e) => {
+    const d = map.get(e.date) || { date: e.date, savings: 0, loan: 0, interest: 0, total: 0, names: new Set(), notes: [] };
+    d[e.type.toLowerCase()] += e.amount;
+    d.total += e.amount;
+    if (e.collectorName) d.names.add(e.collectorName);
+    if (e.notes) d.notes.push(e.notes);
+    map.set(e.date, d);
+  });
+  return [...map.values()].map((d) => ({
+    date: d.date,
+    savings: d.savings,
+    loan: d.loan,
+    interest: d.interest,
+    total: d.total,
+    collectorName: [...d.names].join(', '),
+    notes: d.notes.join('; '),
+  }));
+}
+
+const amountCell = (v) => (v ? formatMoney(v) : <span className="text-gray-300">-</span>);
 
 export default function CustomerReport() {
   const [customers, setCustomers] = useState([]);
@@ -44,8 +68,9 @@ export default function CustomerReport() {
     };
   }, [customerId, from, to]);
 
-  const entries = report?.entries || [];
   const totals = report?.totals || { savings: 0, loan: 0, interest: 0, total: 0 };
+  // One row per date (server sends `days`; older servers only send `entries`, so group them here)
+  const days = report?.days || groupByDay(report?.entries || []);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -101,9 +126,9 @@ export default function CustomerReport() {
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <h2 className="text-base font-bold text-gray-900 px-4 sm:px-6 py-4 border-b border-gray-200">
-              Transactions ({entries.length})
+              Collections ({days.length} {days.length === 1 ? 'day' : 'days'})
             </h2>
-            {entries.length === 0 ? (
+            {days.length === 0 ? (
               <div className="text-center py-10 text-gray-400 text-sm">No collections in this period.</div>
             ) : (
               <div className="overflow-auto max-h-[65vh]">
@@ -111,27 +136,37 @@ export default function CustomerReport() {
                   <thead className="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase">
                     <tr>
                       <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3 text-right">Savings</th>
+                      <th className="px-4 py-3 text-right">Loan</th>
+                      <th className="px-4 py-3 text-right">Interest</th>
+                      <th className="px-4 py-3 text-right">Total</th>
                       <th className="px-4 py-3">Collector</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
                       <th className="px-4 py-3">Notes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {entries.map((e) => (
-                      <tr key={e.id} className="hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{formatDate(e.date)}</td>
-                        <td className="px-4 py-2.5 text-gray-800">{e.collectorName || '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded ${TYPE_BADGE[e.type]}`}>
-                            {TYPE_LABELS[e.type]}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-bold text-gray-900 tabular-nums">{formatMoney(e.amount)}</td>
-                        <td className="px-4 py-2.5 text-gray-400 text-xs">{e.notes || '-'}</td>
+                    {days.map((d) => (
+                      <tr key={d.date} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{formatDate(d.date)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{amountCell(d.savings)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{amountCell(d.loan)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-800">{amountCell(d.interest)}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-gray-900 tabular-nums">{formatMoney(d.total)}</td>
+                        <td className="px-4 py-2.5 text-gray-800">{d.collectorName || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-400 text-xs">{d.notes || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="sticky bottom-0 bg-gray-50 font-bold text-gray-900">
+                    <tr className="border-t-2 border-gray-200">
+                      <td className="px-4 py-3">Total</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(totals.savings)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(totals.loan)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(totals.interest)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(totals.total)}</td>
+                      <td className="px-4 py-3" colSpan={2} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}

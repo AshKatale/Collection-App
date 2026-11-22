@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
+import { reopenUpdatePrompt, updatesSupported } from '@/components/update-prompt';
 import { AppText, Button, Card, Field, Screen, Segmented, toast } from '@/components/ui';
 import { useAuth } from '@/context/auth';
 import { useSettings } from '@/context/settings';
 import { changePasswordApi, getAdminDashboard } from '@/api/endpoints';
-import { errorMessage } from '@/lib/format';
+import { errorMessage, formatDateTime } from '@/lib/format';
 import { useApi } from '@/hooks/data';
 import { useSync } from '@/sync/engine';
 import { getApiBaseUrl } from '@/api/client';
@@ -14,12 +16,27 @@ export default function Settings() {
   const { user } = useAuth();
   const { settings, update, t } = useSettings();
   const { online } = useSync();
-  const [url, setUrl] = useState(settings.apiUrl);
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
   const stats = useApi('admin_stats', getAdminDashboard, [], user?.role === 'ADMIN');
+
+  const [checking, setChecking] = useState(false);
+  const checkUpdates = async () => {
+    if (!updatesSupported) return toast.info(t('Updates work only in the installed app, not in development.'));
+    if (!online) return toast.error(t('This needs an internet connection'));
+    setChecking(true);
+    try {
+      const res = await Updates.checkForUpdateAsync();
+      if (res.isAvailable) reopenUpdatePrompt();
+      else toast.success(t('You are on the latest version'));
+    } catch (e) {
+      toast.error(errorMessage(e, t('Could not check for updates')));
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const changePassword = async () => {
     if (!online) return toast.error(t('This needs an internet connection'));
@@ -85,19 +102,22 @@ export default function Settings() {
         <Button title={t('Update password')} onPress={changePassword} loading={busy} disabled={!cur || !next || !again} />
       </Card>
 
-      <Card style={{ gap: 10 }}>
+      <Card style={{ gap: 6 }}>
         <AppText weight="bold">{t('Server')}</AppText>
-        <Field label="API URL" value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" hint={`${t('Currently')}: ${getApiBaseUrl()}`} />
-        <Button
-          title={t('Save')}
-          variant="outline"
-          onPress={() => {
-            const clean = url.trim().replace(/\/+$/, '');
-            if (!/^https?:\/\//i.test(clean)) return toast.error(t('Enter a full URL starting with http:// or https://'));
-            update({ apiUrl: clean });
-            toast.success(t('Server address saved'));
-          }}
-        />
+        {/* Read-only: the address is set in .env (EXPO_PUBLIC_API_URL) when the app is built / started */}
+        <AppText size={12} color="textMuted" selectable>
+          {getApiBaseUrl()}
+        </AppText>
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <AppText weight="bold">{t('App update')}</AppText>
+        <AppText size={12} color="textMuted">
+          {`v${Constants.expoConfig?.version ?? '1.0.0'}`}
+          {Updates.updateId ? ` · ${Updates.updateId.slice(0, 8)}` : ''}
+          {Updates.createdAt ? ` · ${formatDateTime(Updates.createdAt.getTime())}` : ''}
+        </AppText>
+        <Button title={checking ? t('Checking…') : t('Check for updates')} variant="outline" icon="refresh-cw" onPress={checkUpdates} loading={checking} />
       </Card>
 
       <AppText size={12} color="textMuted" align="center">

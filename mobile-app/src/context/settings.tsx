@@ -31,7 +31,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         const raw = await secureGet(KEY);
         const saved = raw ? JSON.parse(raw) : {};
         const merged = { ...DEFAULTS, ...saved };
-        if (!merged.apiUrl) merged.apiUrl = DEFAULTS.apiUrl;
+        // The server address comes ONLY from EXPO_PUBLIC_API_URL (.env). A URL saved by an older app version
+        // (login / settings "Server" option) must not override it, or changing .env would have no effect.
+        merged.apiUrl = DEFAULTS.apiUrl;
         setApiBaseUrl(merged.apiUrl);
         setSettings(merged);
       } catch {

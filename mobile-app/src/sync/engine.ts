@@ -5,7 +5,7 @@ import { pullApi, pushApi, refreshApi } from '@/api/endpoints';
 import { getAuthToken, setAuthToken, setReachabilityHandler } from '@/api/client';
 import { isDbOpen, setMeta, getMeta } from '@/db';
 import { applyPull, applyResults, outboxCounts, parsePayload, releaseBatch, resetSending, takeBatch } from '@/db/repo';
-import { PULL_DAYS, PUSH_CHUNK, TOKEN_REFRESH_AFTER_MS } from '@/lib/config';
+import { FULL_PULL_EVERY_MS, PULL_DAYS, PULL_MIN_INTERVAL_MS, PUSH_CHUNK, TOKEN_REFRESH_AFTER_MS } from '@/lib/config';
 import { errorMessage, isNetworkError } from '@/lib/format';
 import { loadSession, saveSession } from '@/lib/session';
 import { setAppTimezone } from '@/lib/today';
@@ -49,7 +49,7 @@ export const getSyncState = () => state;
 export async function localDataChanged(): Promise<void> {
   await refreshCounts();
   set({ version: state.version + 1 });
-  if (state.online) void syncNow({ quiet: true });
+  if (state.online) void syncNow({ quiet: true, light: true });
 }
 
 export async function refreshCounts(): Promise<void> {
@@ -86,7 +86,11 @@ async function maybeRefreshToken() {
   }
 }
 
-export function syncNow(opts: { quiet?: boolean } = {}): Promise<SyncOutcome> {
+type SyncOpts = { quiet?: boolean; /** triggered by a local save: skip the download if we pulled moments ago */ light?: boolean };
+type PullState = { serverTime: string; sig: string; days: number; fullAt: number };
+let lastPullAt = 0;
+
+export function syncNow(opts: SyncOpts = {}): Promise<SyncOutcome> {
   if (running) return running;
   running = doSync(opts).finally(() => {
     running = null;
@@ -94,7 +98,7 @@ export function syncNow(opts: { quiet?: boolean } = {}): Promise<SyncOutcome> {
   return running;
 }
 
-async function doSync(_opts: { quiet?: boolean }): Promise<SyncOutcome> {
+async function doSync(opts: SyncOpts): Promise<SyncOutcome> {
   if (!isDbOpen() || !getAuthToken()) return { ok: false, pushed: 0, failed: 0, offline: false, message: 'Not signed in' };
   set({ syncing: true, lastError: null });
   let pushed = 0;
@@ -124,13 +128,27 @@ async function doSync(_opts: { quiet?: boolean }): Promise<SyncOutcome> {
       await refreshCounts();
     }
 
-    // 2) pull the latest customers / entries / permissions
-    const data = await pullApi(PULL_DAYS);
-    setAppTimezone(data.timezone);
-    await applyPull(data);
-    await setMeta('timezone', data.timezone);
-    await setMeta('lastPull', { at: Date.now(), today: data.today });
-    await setMeta('requests', data.requests);
+    // 2) pull the latest customers / entries / permissions.
+    //    After a plain save (opts.light) we skip it if we pulled very recently: the save is already on the phone.
+    const skipPull = !!opts.light && Date.now() - lastPullAt < PULL_MIN_INTERVAL_MS;
+    if (!skipPull) {
+      // Incremental: ask only for what changed since the last pull. A full pull is made when there is no
+      // previous pull, the settings changed, or the last full pull is older than FULL_PULL_EVERY_MS.
+      const prev = await getMeta<PullState>('pullState');
+      const usable = prev && prev.days === PULL_DAYS && Date.now() - prev.fullAt < FULL_PULL_EVERY_MS ? prev : null;
+      const data = await pullApi(PULL_DAYS, usable?.serverTime, usable?.sig);
+      setAppTimezone(data.timezone);
+      await applyPull(data);
+      await setMeta('timezone', data.timezone);
+      await setMeta('lastPull', { at: Date.now(), today: data.today });
+      await setMeta('requests', data.requests);
+      // Only remember the position when the server understood incremental pulls (it returns a signature)
+      if (data.sig) {
+        const fullAt = data.full === false && usable ? usable.fullAt : Date.now();
+        await setMeta('pullState', { serverTime: data.serverTime, sig: data.sig, days: PULL_DAYS, fullAt } satisfies PullState);
+      }
+      lastPullAt = Date.now();
+    }
 
     const lastSyncAt = Date.now();
     await setMeta('lastSyncAt', lastSyncAt);
@@ -214,5 +232,6 @@ export function stopSync(): void {
   unsubs = [];
   if (timer) clearInterval(timer);
   timer = null;
+  lastPullAt = 0; // the next user's first sync must download
   set({ pending: 0, failed: 0, lastSyncAt: null, lastError: null, sessionExpired: false, syncing: false });
 }

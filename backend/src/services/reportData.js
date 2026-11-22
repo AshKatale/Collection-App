@@ -270,11 +270,35 @@ async function customerData(user, customerId, from, to) {
   });
   Object.keys(totals).forEach((k) => (totals[k] = round2(totals[k])));
 
+  // One row per date: Savings / Loan / Interest / Total (entries are already in date order)
+  const byDate = new Map();
+  rows.forEach((r) => {
+    let d = byDate.get(r.date);
+    if (!d) {
+      d = { date: r.date, savings: 0, loan: 0, interest: 0, total: 0, collectors: new Set(), notes: [] };
+      byDate.set(r.date, d);
+    }
+    d[r.type.toLowerCase()] += r.amount;
+    d.total += r.amount;
+    if (r.collectorName) d.collectors.add(r.collectorName);
+    if (r.notes) d.notes.push(r.notes);
+  });
+  const days = [...byDate.values()].map((d) => ({
+    date: d.date,
+    savings: round2(d.savings),
+    loan: round2(d.loan),
+    interest: round2(d.interest),
+    total: round2(d.total),
+    collectorName: [...d.collectors].join(', '),
+    notes: d.notes.join('; '),
+  }));
+
   return {
     customer: { id: customer.id, accountNo: customer.accountNo, name: customer.name, phone: customer.phone },
     from: from || null,
     to: to || null,
     entries: rows,
+    days,
     totals,
   };
 }

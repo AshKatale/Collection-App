@@ -1,4 +1,5 @@
 import { get, post, put, del, getRaw } from './client';
+import { SYNC_TIMEOUT_MS } from '@/lib/config';
 
 export type Role = 'ADMIN' | 'OWNER' | 'COLLECTOR';
 export type EntryType = 'SAVINGS' | 'LOAN' | 'INTEREST';
@@ -61,6 +62,12 @@ export type PullData = {
   today: string;
   timezone: string;
   window: { from: string; to: string };
+  /** true: `entries` is the complete list for the window. false: only entries changed since `since`. (older servers omit it = full) */
+  full?: boolean;
+  /** Fingerprint of the customer list + assignments; send it back with `since` on the next pull. */
+  sig?: string;
+  /** Entries deleted on the server since `since` (incremental pulls only). */
+  deletedIds?: string[];
   customers: ServerCustomer[];
   entries: ServerEntry[];
   grants: { from: string; to: string }[];
@@ -76,8 +83,10 @@ export const changePasswordApi = (currentPassword: string, newPassword: string) 
   put('/auth/change-password', { currentPassword, newPassword });
 
 /* sync (mobile only) */
-export const pushApi = (ops: SyncOp[]) => post<{ results: SyncResult[]; today: string }>('/sync/push', { ops });
-export const pullApi = (days: number) => get<PullData>('/sync/pull', { days });
+// Sync requests get a longer timeout than normal calls: a batch can touch the database many times
+export const pushApi = (ops: SyncOp[]) => post<{ results: SyncResult[]; today: string }>('/sync/push', { ops }, { timeout: SYNC_TIMEOUT_MS });
+export const pullApi = (days: number, since?: string, sig?: string) =>
+  get<PullData>('/sync/pull', { days, ...(since && sig ? { since, sig } : {}) }, { timeout: SYNC_TIMEOUT_MS });
 
 /* customers */
 export const getCustomers = () => get<ServerCustomer[]>('/customers');

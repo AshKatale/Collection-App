@@ -6,7 +6,7 @@
 const ExcelJS = require('exceljs');
 const { monthName, displayDate, fyLabel } = require('./helpers');
 
-const ORG_NAME = process.env.ORG_NAME || 'Siddhivinayak Mandal';
+const ORG_NAME = process.env.ORG_NAME || 'GKC Collection';
 const TYPE_LABEL = { SAVINGS: 'Savings', LOAN: 'Loan Repayment', INTEREST: 'Interest' };
 
 const FILL = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
@@ -237,26 +237,34 @@ function buildCustomerWorkbook(data) {
   const ws = wb.addWorksheet(sheetName(`${data.customer.accountNo} ${data.customer.name}`), {
     views: [{ state: 'frozen', ySplit: 3 }],
   });
-  ws.columns = [{ width: 6 }, { width: 14 }, { width: 18 }, { width: 16 }, { width: 24 }, { width: 30 }];
+  ws.columns = [{ width: 6 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 24 }, { width: 30 }];
   const range = data.from || data.to ? `${data.from ? displayDate(data.from) : '…'} to ${data.to ? displayDate(data.to) : '…'}` : 'All dates';
-  titleRows(ws, ORG_NAME, `${data.customer.accountNo} · ${data.customer.name} – ${range}`, 6);
-  styleHeader(ws.addRow(['Sr', 'Date', 'Type', 'Amount', 'Collector', 'Notes']));
-  data.entries.forEach((e, i) => {
-    const row = ws.addRow([i + 1, displayDate(e.date), TYPE_LABEL[e.type], e.amount, e.collectorName, e.notes || '']);
-    styleData(row, i, 99);
-    row.getCell(4).numFmt = moneyFmt(e.amount);
-    row.getCell(4).alignment = { horizontal: 'right' };
+  titleRows(ws, ORG_NAME, `${data.customer.accountNo} · ${data.customer.name} – ${range}`, 8);
+  styleHeader(ws.addRow(['Sr', 'Date', 'Savings', 'Loan', 'Interest', 'Total', 'Collector', 'Notes']));
+  data.days.forEach((d, i) => {
+    const row = ws.addRow([
+      i + 1,
+      displayDate(d.date),
+      d.savings || null,
+      d.loan || null,
+      d.interest || null,
+      d.total || null,
+      d.collectorName,
+      d.notes || '',
+    ]);
+    styleData(row, i, 3);
     row.getCell(1).alignment = { horizontal: 'center' };
+    row.getCell(2).alignment = { horizontal: 'center' };
+    // collector / notes are text: styleData right-aligns everything from the first money column
+    row.getCell(7).alignment = { horizontal: 'left', vertical: 'middle' };
+    row.getCell(8).alignment = { horizontal: 'left', vertical: 'middle' };
+    row.getCell(7).numFmt = 'General';
+    row.getCell(8).numFmt = 'General';
   });
-  ws.addRow([]);
-  [['Savings', data.totals.savings], ['Loan Repayment', data.totals.loan], ['Interest', data.totals.interest], ['Total', data.totals.total]].forEach(
-    ([k, v], i) => {
-      const row = ws.addRow(['', '', k, v]);
-      row.getCell(3).font = { bold: true };
-      row.getCell(4).numFmt = moneyFmt(v);
-      if (i === 3) styleTotal(row, 4);
-    }
-  );
+  const t = data.totals;
+  const totalRow = ws.addRow(['', 'Total', t.savings, t.loan, t.interest, t.total, '', '']);
+  styleTotal(totalRow, 3);
+  totalRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
   return wb;
 }
 

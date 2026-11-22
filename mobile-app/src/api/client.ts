@@ -53,8 +53,8 @@ http.interceptors.response.use(
 );
 
 /** Unwraps the `{ success, data }` envelope used by the backend. */
-export async function get<T = any>(url: string, params?: Record<string, any>): Promise<T> {
-  const res = await http.get(url, { params });
+export async function get<T = any>(url: string, params?: Record<string, any>, config?: AxiosRequestConfig): Promise<T> {
+  const res = await http.get(url, { params, ...config });
   return (res.data?.data ?? res.data) as T;
 }
 export async function getRaw<T = any>(url: string, params?: Record<string, any>) {

@@ -1,4 +1,5 @@
 const prisma = require('../db');
+const auth = require('../middleware/auth');
 const { todayISO, parseDateOnly, num } = require('../utils/helpers');
 
 const listUsers = async (req, res) => {
@@ -87,12 +88,14 @@ const updateUser = async (req, res) => {
 
     const ownerChanged = newRole === 'COLLECTOR' && ownerId !== current.ownerId;
 
+    const deactivating = isActive === false && current.isActive;
+    let affected = [id];
     const updated = await prisma.$transaction(async (tx) => {
       // Moving a collector to another owner: drop assignments that belonged to the old owner
       if (ownerChanged || (current.role === 'COLLECTOR' && newRole !== 'COLLECTOR')) {
         await tx.collectorCustomer.deleteMany({ where: { collectorId: id } });
       }
-      return tx.user.update({
+      const row = await tx.user.update({
         where: { id },
         data: {
           ...(name !== undefined && { name }),
@@ -104,7 +107,10 @@ const updateUser = async (req, res) => {
         },
         select: userSelect,
       });
+      if (deactivating) affected = await cascadeDeactivate(tx, current);
+      return row;
     });
+    affected.forEach(auth.invalidateUser); // role / name / active changes take effect at once
 
     res.json({ success: true, data: updated, message: 'User updated successfully' });
   } catch (error) {
@@ -114,6 +120,29 @@ const updateUser = async (req, res) => {
   }
 };
 
+/**
+ * Deactivating cascades so nothing is left pointing at someone who can no longer work:
+ *  - a collector loses their customer assignments;
+ *  - an owner's active collectors are deactivated too (and lose their assignments).
+ * Entries and customers are never touched. Reactivating a user does NOT restore assignments.
+ * Returns the ids whose login cache must be dropped.
+ */
+async function cascadeDeactivate(tx, target) {
+  const affected = [target.id];
+  if (target.role === 'OWNER') {
+    const collectors = await tx.user.findMany({ where: { ownerId: target.id, role: 'COLLECTOR', isActive: true }, select: { id: true } });
+    const ids = collectors.map((c) => c.id);
+    if (ids.length) {
+      await tx.user.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+      await tx.collectorCustomer.deleteMany({ where: { collectorId: { in: ids } } });
+      affected.push(...ids);
+    }
+  } else if (target.role === 'COLLECTOR') {
+    await tx.collectorCustomer.deleteMany({ where: { collectorId: target.id } });
+  }
+  return affected;
+}
+
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -121,10 +150,14 @@ const deleteUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cannot deactivate yourself' });
     }
 
-    const updated = await prisma.user.update({
-      where: { id },
-      data: { isActive: false }
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const affected = await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { isActive: false } });
+      return cascadeDeactivate(tx, target);
     });
+    affected.forEach(auth.invalidateUser);
 
     res.json({ success: true, message: 'User deactivated successfully' });
   } catch (error) {

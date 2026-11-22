@@ -144,10 +144,16 @@ async function insertOp(d: SQLiteDatabase, op: SyncOp, label: string) {
   );
 }
 
-/** Find the (not yet sent) create-op that contains this entry's item. */
+/**
+ * Find the create-op that contains this entry's item AND is certain not to exist on the server:
+ *  - never attempted (attempts = 0), or
+ *  - rejected by the server ('failed').
+ * A 'pending' op that was attempted before (timeout / lost reply) MAY already have been applied by the server,
+ * so it must not be rewritten or forgotten; edits and deletes are then sent as normal operations instead.
+ */
 async function createOpFor(d: SQLiteDatabase, clientId: string): Promise<OutboxRow | null> {
   const rows = await d.getAllAsync<OutboxRow>(
-    `SELECT * FROM outbox WHERE kind = 'ENTRY_CREATE' AND status IN ('pending','failed') AND payload LIKE ?`,
+    `SELECT * FROM outbox WHERE kind = 'ENTRY_CREATE' AND (status = 'failed' OR (status = 'pending' AND attempts = 0)) AND payload LIKE ?`,
     `%"clientId":"${clientId}"%`
   );
   return rows[0] ?? null;
@@ -377,8 +383,10 @@ export async function applyPull(data: PullData): Promise<void> {
     await d.runAsync('DELETE FROM grants');
     for (const g of data.grants) await d.runAsync('INSERT INTO grants (fromDate, toDate) VALUES (?,?)', g.from, g.to);
 
-    // Entries confirmed by the server inside the pulled window are replaced; local pending work is kept.
-    await d.runAsync(`UPDATE entries SET stale = 1 WHERE syncState = 'synced' AND date >= ?`, data.window.from);
+    // FULL pull: entries confirmed by the server inside the pulled window are replaced; local pending work is kept.
+    // INCREMENTAL pull (full === false): the server only sent what changed, so nothing may be treated as missing.
+    const full = data.full !== false;
+    if (full) await d.runAsync(`UPDATE entries SET stale = 1 WHERE syncState = 'synced' AND date >= ?`, data.window.from);
     for (const e of data.entries) {
       const v = fromServer(e);
       const existing = await d.getFirstAsync<LocalEntry>(
@@ -402,6 +410,10 @@ export async function applyPull(data: PullData): Promise<void> {
         );
       }
     }
+    // Entries deleted on the server since the last pull (incremental mode). Local unsent work on them is kept.
+    for (const id of data.deletedIds ?? []) {
+      await d.runAsync(`DELETE FROM entries WHERE serverId = ? AND syncState = 'synced' AND deleted = 0`, id);
+    }
     await d.runAsync(`DELETE FROM entries WHERE stale = 1 AND syncState = 'synced'`);
     await d.runAsync(`UPDATE entries SET stale = 0`);
   });
@@ -414,5 +426,6 @@ export async function getGrants(): Promise<{ fromDate: string; toDate: string }[
 export async function discardAllUserData(): Promise<void> {
   await tx(async (d) => {
     for (const t of ['customers', 'entries', 'outbox', 'grants', 'api_cache']) await d.runAsync(`DELETE FROM ${t}`);
+    await d.runAsync(`DELETE FROM meta WHERE key = 'pullState'`); // next pull must be a full one
   });
 }

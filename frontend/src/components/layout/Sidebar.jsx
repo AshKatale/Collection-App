@@ -85,7 +85,7 @@ export default function Sidebar({ isOpen, onClose }) {
               <span className="text-white font-bold text-lg">S</span>
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-800 leading-tight truncate">Siddhivinayak Mandal</h1>
+              <h1 className="text-sm font-bold text-gray-800 leading-tight truncate">GKC Collection</h1>
               <p className="text-xs text-gray-500">Daily Collection</p>
             </div>
           </div>

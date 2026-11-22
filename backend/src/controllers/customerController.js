@@ -157,6 +157,10 @@ const createCustomer = async (req, res) => {
     return res.status(201).json({ success: true, data: customer });
   } catch (err) {
     console.error('Create customer error:', err);
+    // Two requests raced past the duplicate check and the database unique rule caught the second one
+    if (err.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'A customer with this account number and name already exists' });
+    }
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
