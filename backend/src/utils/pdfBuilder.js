@@ -90,6 +90,22 @@ const layout = {
   paddingBottom: () => 2,
 };
 
+/**
+ * Fixed column widths + the cell padding of `layout` (3 + 3 per column) + the grid lines must fit inside the
+ * page, otherwise the right-most columns (for us: the row "Total") are silently cut off. If the columns do not
+ * fit, they are scaled down together so the whole table stays on the page.
+ */
+const PAGE_WIDTH = { A4: { portrait: 595.28, landscape: 841.89 }, A3: { portrait: 841.89, landscape: 1190.55 } };
+const PAGE_MARGINS_X = 40; // 20 left + 20 right, see baseDoc
+const CELL_PAD = 6; // paddingLeft + paddingRight in `layout`
+function fitWidths(widths, { pageSize = 'A4', orientation = 'portrait' } = {}) {
+  const available = PAGE_WIDTH[pageSize][orientation] - PAGE_MARGINS_X - (widths.length + 1) * 0.4 - 3;
+  const content = widths.reduce((sum, w) => sum + w, 0);
+  if (content + widths.length * CELL_PAD <= available) return widths;
+  const scale = (available - widths.length * CELL_PAD) / content;
+  return widths.map((w) => Math.floor(w * scale * 10) / 10);
+}
+
 function baseDoc({ title, subtitle, content, orientation = 'portrait', pageSize = 'A4', fontSize = 9 }) {
   return {
     pageSize,
@@ -193,7 +209,7 @@ function monthlySections(sections) {
         margin: [0, 0, 0, 4],
         pageBreak: idx > 0 ? 'before' : undefined,
       },
-      { table: { headerRows: 1, widths: [14, 118, ...days.map(() => 25), 44], body }, layout },
+      { table: { headerRows: 1, widths: fitWidths([14, 118, ...days.map(() => 25), 44], { pageSize: 'A3', orientation: 'landscape' }), body }, layout },
     ];
   });
 }
@@ -236,7 +252,8 @@ function yearlyDoc(sections) {
     ];
     return [
       { text: label, bold: true, fontSize: 11, color: GREEN, margin: [0, 0, 0, 4], pageBreak: idx > 0 ? 'before' : undefined },
-      { table: { headerRows: 1, widths: [18, 130, ...data.months.map(() => 50), 62], body }, layout },
+      // A4 landscape is only ~800pt wide: 12 month columns + Sr + name + Total must be narrow enough to fit
+      { table: { headerRows: 1, widths: fitWidths([18, 118, ...data.months.map(() => 42), 56], { pageSize: 'A4', orientation: 'landscape' }), body }, layout },
     ];
   });
   return baseDoc({

@@ -3,6 +3,9 @@
     "preview": {
       "distribution": "internal",
       "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://collection-app-ten-mocha.vercel.app/api"
+      },
       "android": {
         "buildType": "apk"
       }
