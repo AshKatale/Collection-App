@@ -68,6 +68,12 @@ model Customer {
   createdAt          DateTime            @default(now())
   entries            Entry[]
   assignments        CollectorCustomer[]
+  ledgerLoans        LedgerLoan[]
+  ledgerDeposits     LedgerDeposit[]
+  ledgerTerms        LedgerTerm[]
+  ledgerOverrides    LedgerOverride[]
+  ledgerOpening      LedgerOpening?
+  ledgerSettlements  LedgerSettlement[]
 
   // Same account number may be shared by different people (joint/family accounts),
   // but the same number + same name inside one owner's book is a duplicate.
@@ -148,4 +154,136 @@ model AccessRequest {
 
   @@index([collectorId, status])
   @@index([ownerId, status])
+}
+
+/* ───────────────────────── Customer ledger (web, Admin / Owner only) ─────────────────────────
+   Only the *facts* are stored here (loans given, deposits, rates, manual interest, settlements).
+   Monthly interest and balances are calculated from them and from the daily collections, so a
+   corrected collection is reflected automatically. See src/services/ledgerEngine.js           */
+
+enum LedgerKind {
+  LOAN
+  FD
+  SAVINGS
+}
+
+enum LedgerRateMode {
+  PERCENT // percent per month
+  AMOUNT // fixed rupees per month
+}
+
+// What a SAVINGS (daily collection) percentage is applied on
+enum LedgerBase {
+  BALANCE // total collected so far
+  MONTH // only that month's collection
+}
+
+model LedgerLoan {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  ownerId    String
+  date       DateTime  @db.Date
+  amount     Decimal   @db.Decimal(12, 2)
+  notes      String?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@index([customerId])
+}
+
+// Fixed deposit
+model LedgerDeposit {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  ownerId    String
+  date       DateTime  @db.Date
+  amount     Decimal   @db.Decimal(12, 2)
+  notes      String?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@index([customerId])
+}
+
+// Interest terms set by the owner, effective from the month of `date`
+model LedgerTerm {
+  id         String         @id @default(cuid())
+  customerId String
+  customer   Customer       @relation(fields: [customerId], references: [id])
+  kind       LedgerKind
+  targetId   String         @default("") // FD: the deposit id (or "OPENING"); otherwise empty
+  sourceId   String? // the loan / deposit / "OPENING" this term was entered with
+  date       DateTime       @db.Date
+  mode       LedgerRateMode
+  value      Decimal        @db.Decimal(14, 4)
+  base       LedgerBase?
+  createdBy  String
+  createdAt  DateTime       @default(now())
+
+  @@index([customerId])
+}
+
+// One month's interest typed in by the owner (replaces the calculated amount)
+model LedgerOverride {
+  id         String     @id @default(cuid())
+  customerId String
+  customer   Customer   @relation(fields: [customerId], references: [id])
+  kind       LedgerKind
+  targetId   String     @default("")
+  month      String // YYYY-MM
+  amount     Decimal    @db.Decimal(14, 2)
+  createdBy  String
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([customerId, kind, targetId, month])
+}
+
+// Balances carried over from the paper book, as on the 1st of `month`
+model LedgerOpening {
+  customerId      String   @id
+  customer        Customer @relation(fields: [customerId], references: [id])
+  month           String // YYYY-MM
+  loanPrincipal   Decimal  @default(0) @db.Decimal(14, 2)
+  pendingInterest Decimal  @default(0) @db.Decimal(14, 2)
+  fdAmount        Decimal  @default(0) @db.Decimal(14, 2)
+  fdInterest      Decimal  @default(0) @db.Decimal(14, 2)
+  savings         Decimal  @default(0) @db.Decimal(14, 2)
+  savingsInterest Decimal  @default(0) @db.Decimal(14, 2)
+  createdBy       String
+  updatedAt       DateTime @updatedAt
+}
+
+// Account settled with the customer on `date`. Never deleted: cancelled ones stay in the history.
+model LedgerSettlement {
+  id              String    @id @default(cuid())
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  date            DateTime  @db.Date
+  // Positive: paid to the customer. Negative: received from the customer.
+  finalAmount     Decimal   @db.Decimal(14, 2)
+  snapshot        Json
+  notes           String?
+  createdBy       String
+  createdByName   String
+  createdAt       DateTime  @default(now())
+  cancelledAt     DateTime?
+  cancelledByName String?
+
+  @@index([customerId, date])
+}
+
+model LedgerAudit {
+  id         String   @id @default(cuid())
+  customerId String
+  actorId    String
+  actorName  String
+  action     String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([customerId, createdAt])
 }

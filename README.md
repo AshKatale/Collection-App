@@ -77,6 +77,17 @@ Collectors-App/
 
 ---
 
+## 📒 Customer Ledger (`/ledger`, web only, Admin and Owner)
+
+- Loan repayment, interest received and daily collection come from the normal **Loan**, **Interest** and **Savings** collections.
+- The owner records loans, fixed deposits, interest rates (or amounts), typed monthly interest and opening balances.
+- Loan interest: full month in the month of a loan, then on the balance at the start of each month. No penalty, no interest on interest.
+- Balances carry forward until **Settle** is used; settlements are kept in a dated history.
+- PDF in English or Marathi. Calculation rules: `backend/src/services/ledgerEngine.js` (tests: `cd backend && npm test`).
+- New database tables: run `npm run db:push` once against every database (including production) before deploying.
+
+---
+
 ## 🔑 Default Credentials
 
 - **Email**: ``

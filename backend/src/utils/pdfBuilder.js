@@ -317,4 +317,4 @@ function sendPdf(res, docDefinition, filename) {
   doc.end();
 }
 
-module.exports = { dailyDoc, monthlyDoc, yearlyDoc, customerDoc, sendPdf };
+module.exports = { dailyDoc, monthlyDoc, yearlyDoc, customerDoc, sendPdf, kit: { baseDoc, th, td, layout, GREEN, LIGHT } };

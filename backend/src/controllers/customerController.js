@@ -258,7 +258,7 @@ const updateCustomer = async (req, res) => {
 /**
  * DELETE /api/customers/:id
  * If no entries exist: completely delete assignments & customer.
- * If historical entries exist: soft delete (isActive = false) & delete assignments.
+ * If historical entries or ledger records exist: soft delete (isActive = false) & delete assignments.
  */
 const deleteCustomer = async (req, res) => {
   try {
@@ -267,8 +267,9 @@ const deleteCustomer = async (req, res) => {
       where: { id: req.params.id },
       include: {
         _count: {
-          select: { entries: true },
+          select: { entries: true, ledgerLoans: true, ledgerDeposits: true, ledgerTerms: true, ledgerOverrides: true, ledgerSettlements: true },
         },
+        ledgerOpening: { select: { customerId: true } },
       },
     });
     if (!customer) {
@@ -287,14 +288,19 @@ const deleteCustomer = async (req, res) => {
       where: { customerId: req.params.id },
     });
 
-    if (!customer._count || customer._count.entries === 0) {
-      // No entries: hard delete cleanly
+    const hasHistory =
+      Object.values(customer._count || {}).some((n) => n > 0) ||
+      Boolean(customer.ledgerOpening) ||
+      // ledger change history outlives the records it describes: keep the customer it belongs to
+      (await prisma.ledgerAudit.count({ where: { customerId: customer.id } })) > 0;
+    if (!hasHistory) {
+      // No entries and no ledger: hard delete cleanly
       await prisma.customer.delete({
         where: { id: req.params.id },
       });
       return res.json({ success: true, message: 'Customer deleted permanently' });
     } else {
-      // Existing entries: soft delete so historical accounting is preserved
+      // Existing entries or ledger records: soft delete so historical accounting is preserved
       await prisma.customer.update({
         where: { id: req.params.id },
         data: { isActive: false },

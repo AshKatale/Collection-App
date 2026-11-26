@@ -8,15 +8,11 @@ function filenameFrom(res, fallback) {
 }
 
 /**
- * Download a server-generated report (xlsx | pdf).
- * Reports are built on the server so Excel/PDF always match what the API reports
- * (Marathi names, Indian number format, etc.).
+ * Download a server-generated file. Files are built on the server so Excel/PDF always match
+ * what the API reports (Marathi names, Indian number format, etc.).
  */
-export async function downloadReport(params, format) {
-  const res = await api.get('/reports/export', {
-    params: { ...params, format },
-    responseType: 'blob',
-  });
+export async function downloadFile(url, params, fallbackName) {
+  const res = await api.get(url, { params, responseType: 'blob' });
 
   const blob = res.data;
   // An error comes back as JSON inside a blob – surface its message
@@ -25,12 +21,17 @@ export async function downloadReport(params, format) {
     throw new Error(body.message || 'Export failed');
   }
 
-  const url = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filenameFrom(res, `report.${format}`);
+  a.href = objectUrl;
+  a.download = filenameFrom(res, fallbackName);
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+}
+
+/** Download a report (xlsx | pdf). */
+export function downloadReport(params, format) {
+  return downloadFile('/reports/export', { ...params, format }, `report.${format}`);
 }

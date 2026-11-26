@@ -14,6 +14,7 @@ const Collect = lazy(() => import('./pages/Collect.jsx'));
 const Entries = lazy(() => import('./pages/Entries.jsx'));
 const Customers = lazy(() => import('./pages/Customers.jsx'));
 const Collectors = lazy(() => import('./pages/Collectors.jsx'));
+const Ledger = lazy(() => import('./pages/Ledger.jsx'));
 const Permissions = lazy(() => import('./pages/Permissions.jsx'));
 const DailyReport = lazy(() => import('./pages/reports/DailyReport.jsx'));
 const MonthlyReport = lazy(() => import('./pages/reports/MonthlyReport.jsx'));
@@ -49,6 +50,7 @@ export default function App() {
             ['/collect', ['COLLECTOR', 'OWNER', 'ADMIN'], <Collect />],
             ['/entries', ['OWNER', 'ADMIN'], <Entries />],
             ['/customers', ['OWNER', 'ADMIN'], <Customers />],
+            ['/ledger', ['OWNER', 'ADMIN'], <Ledger />],
             ['/collectors', ['OWNER', 'ADMIN'], <Collectors />],
             ['/reports/daily', ['OWNER', 'ADMIN', 'COLLECTOR'], <DailyReport />],
             ['/permissions', ['OWNER', 'ADMIN', 'COLLECTOR'], <Permissions />],

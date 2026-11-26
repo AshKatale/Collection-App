@@ -9,6 +9,7 @@ import {
   FileBarChart,
   ShieldCheck,
   KeyRound,
+  BookOpen,
   ChevronDown,
   X,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const menuItems = [
   { label: 'Collect', icon: HandCoins, path: '/collect', roles: ['COLLECTOR', 'OWNER', 'ADMIN'] },
   { label: 'Entries', icon: ListChecks, path: '/entries', roles: ['OWNER', 'ADMIN'] },
   { label: 'Customers', icon: Users, path: '/customers', roles: ['OWNER', 'ADMIN'] },
+  { label: 'Ledger', icon: BookOpen, path: '/ledger', roles: ['OWNER', 'ADMIN'] },
   { label: 'Collectors', icon: Footprints, path: '/collectors', roles: ['OWNER', 'ADMIN'] },
   { label: 'Permissions', icon: KeyRound, path: '/permissions', roles: ['OWNER', 'ADMIN', 'COLLECTOR'], badge: true },
   {
